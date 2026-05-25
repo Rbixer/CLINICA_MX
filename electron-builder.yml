@@ -1,0 +1,50 @@
+appId: com.clinicaintegral.desktop
+productName: Clinica Integral
+copyright: Copyright © 2026 Clinica Integral
+
+directories:
+  output: release/electron
+  buildResources: electron-app/build
+
+files:
+  - package.json
+  - electron-app/**/*
+  - frontend/dist/**/*
+  - "!**/*.map"
+
+extraResources:
+  - from: release/api-win
+    to: api
+    filter:
+      - "**/*"
+
+asar: true
+
+win:
+  signAndEditExecutable: false
+  executableName: ClinicaIntegral
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ClinicaIntegral-${version}-Instalador.${ext}
+
+portable:
+  artifactName: ClinicaIntegral-${version}-Portable.${ext}
+
+linux:
+  target:
+    - AppImage
+  artifactName: ClinicaIntegral-${version}.${ext}
+
+nsis:
+  oneClick: true
+  perMachine: false
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Clinica Integral
+  uninstallDisplayName: Clinica Integral
+  installerLanguages:
+    - es_ES
+  language: 1034

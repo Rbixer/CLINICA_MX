@@ -1,0 +1,1083 @@
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import toast from "react-hot-toast";
+import { ArrowLeft, Download, FileText, FileUp, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { api } from "../api";
+import type { ClinicaConfig, Consulta, EstadoTratamiento, PacientePerfil as Perfil, Tratamiento } from "../types";
+import { Button, Card, Input, Label, Modal, Select } from "../components/ui";
+import { fechaHoyInput, formatFecha, formatMoneda } from "../utils/format";
+import { fileToBase64 } from "../utils/files";
+import FichaClinica from "../components/FichaClinica";
+import { descargarFichaClinicaPdf } from "../utils/pdf/fichaClinicaPdf";
+import { descargarOrdenLabPdf, descargarRecetaPdf } from "../utils/pdf/clinicaPdf";
+
+const TABS = [
+  { id: "historia", label: "Historia clínica" },
+  { id: "tratamientos", label: "Tratamientos" },
+  { id: "estudios", label: "Estudios" },
+  { id: "recetas", label: "Recetas" },
+  { id: "laboratorio", label: "Laboratorio" },
+  { id: "pagos", label: "Pagos" }
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+export default function PacientePerfilPage() {
+  const { id } = useParams();
+  const pacienteId = Number(id);
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [cfg, setCfg] = useState<ClinicaConfig | null>(null);
+  const [medicos, setMedicos] = useState<{ id: number; nombre: string }[]>([]);
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<TabId>("historia");
+  const [modal, setModal] = useState<string | null>(null);
+  const [consultaEdit, setConsultaEdit] = useState<Consulta | null>(null);
+  const [tratamientoEdit, setTratamientoEdit] = useState<Tratamiento | null>(null);
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t && TABS.some((x) => x.id === t)) setTab(t as TabId);
+  }, [searchParams]);
+
+  const load = useCallback(async () => {
+    if (!pacienteId) return;
+    const [p, c, m] = await Promise.all([
+      api.pacientes.perfil(pacienteId),
+      api.config.get(),
+      api.medicos.list()
+    ]);
+    setPerfil(p);
+    setCfg(c);
+    setMedicos(m);
+  }, [pacienteId]);
+
+  useEffect(() => {
+    load().catch((e) => toast.error(e.message));
+  }, [load]);
+
+  async function onFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !perfil) return;
+    try {
+      const dataBase64 = await fileToBase64(file);
+      await api.pacientes.uploadFoto(perfil.id, {
+        dataBase64,
+        mimeType: file.type,
+        nombreArchivo: file.name
+      });
+      toast.success("Fotografía actualizada");
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  if (!perfil) {
+    return <p className="text-slate-500">Cargando expediente…</p>;
+  }
+
+  return (
+    <div>
+      <Link to="/pacientes" className="mb-4 inline-flex items-center gap-2 text-sm text-primary-600 hover:underline print:hidden">
+        <ArrowLeft className="h-4 w-4" /> Volver a pacientes
+      </Link>
+
+      <Card className="mb-6 flex flex-wrap items-start gap-6 print:hidden">
+        <div className="relative">
+          {perfil.foto_url ? (
+            <img src={perfil.foto_url} alt="" className="h-24 w-24 rounded-xl object-cover ring-2 ring-slate-100" />
+          ) : (
+            <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-primary-100 text-2xl font-bold text-primary-700">
+              {perfil.nombre.charAt(0)}
+            </div>
+          )}
+          <label className="absolute -bottom-1 -right-1 cursor-pointer rounded-full bg-primary-600 p-1.5 text-white shadow">
+            <FileUp className="h-3.5 w-3.5" />
+            <input type="file" accept="image/*" className="hidden" onChange={onFoto} />
+          </label>
+        </div>
+        <div className="flex-1 min-w-[200px]">
+          <h1 className="text-2xl font-bold text-slate-900">{perfil.nombre}</h1>
+          <p className="text-sm text-slate-500">DPI {perfil.dpi} · {perfil.telefono}</p>
+          {perfil.alergias ? (
+            <p className="mt-2 rounded-lg bg-rose-50 px-3 py-1 text-sm text-rose-700">Alergias: {perfil.alergias}</p>
+          ) : null}
+        </div>
+        {cfg ? (
+          <Button
+            variant="secondary"
+            onClick={() =>
+              descargarFichaClinicaPdf({
+                cfg,
+                paciente: { ...perfil, id: perfil.id } as unknown as Record<string, string | null | undefined> & {
+                  id: number;
+                },
+                consultas: perfil.consultas
+              })
+            }
+          >
+            <Download className="h-4 w-4" /> Ficha clínica PDF
+          </Button>
+        ) : null}
+      </Card>
+
+      <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 print:hidden">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2.5 text-sm font-medium transition ${
+              tab === t.id
+                ? "border-b-2 border-primary-600 text-primary-600"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "historia" && (
+        <HistoriaTab
+          perfil={perfil}
+          cfg={cfg}
+          medicos={medicos}
+          onRefresh={load}
+          onOpen={() => {
+            setConsultaEdit(null);
+            setModal("consulta");
+          }}
+          onEditConsulta={(c) => {
+            setConsultaEdit(c);
+            setModal("consulta");
+          }}
+        />
+      )}
+      {tab === "tratamientos" && (
+        <TratamientosTab
+          perfil={perfil}
+          medicos={medicos}
+          onRefresh={load}
+          onOpen={() => {
+            setTratamientoEdit(null);
+            setModal("tratamiento");
+          }}
+          onEditTratamiento={(t) => {
+            setTratamientoEdit(t);
+            setModal("tratamiento");
+          }}
+        />
+      )}
+      {tab === "estudios" && <EstudiosTab perfil={perfil} onRefresh={load} />}
+      {tab === "recetas" && (
+        <RecetasTab perfil={perfil} cfg={cfg} medicos={medicos} onRefresh={load} onOpen={() => setModal("receta")} />
+      )}
+      {tab === "laboratorio" && (
+        <LabTab perfil={perfil} cfg={cfg} medicos={medicos} onRefresh={load} onOpen={() => setModal("lab")} />
+      )}
+      {tab === "pagos" && <PagosTab perfil={perfil} onRefresh={load} onOpen={() => setModal("pago")} />}
+
+      {modal === "consulta" && (
+        <ConsultaModal
+          pacienteId={perfil.id}
+          medicos={medicos}
+          consulta={consultaEdit}
+          onClose={() => {
+            setModal(null);
+            setConsultaEdit(null);
+          }}
+          onSaved={load}
+        />
+      )}
+      {modal === "tratamiento" && (
+        <TratamientoModal
+          pacienteId={perfil.id}
+          medicos={medicos}
+          tratamiento={tratamientoEdit}
+          onClose={() => {
+            setModal(null);
+            setTratamientoEdit(null);
+          }}
+          onSaved={load}
+        />
+      )}
+      {modal === "receta" && (
+        <RecetaModal pacienteId={perfil.id} medicos={medicos} onClose={() => setModal(null)} onSaved={load} />
+      )}
+      {modal === "lab" && (
+        <LabModal pacienteId={perfil.id} medicos={medicos} onClose={() => setModal(null)} onSaved={load} />
+      )}
+      {modal === "pago" && <PagoModal pacienteId={perfil.id} onClose={() => setModal(null)} onSaved={load} />}
+    </div>
+  );
+}
+
+function HistoriaTab({
+  perfil,
+  cfg,
+  onRefresh,
+  onOpen,
+  onEditConsulta
+}: {
+  perfil: Perfil;
+  cfg: ClinicaConfig | null;
+  medicos: { id: number; nombre: string }[];
+  onRefresh: () => void;
+  onOpen: () => void;
+  onEditConsulta: (c: Consulta) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex items-center gap-2 text-sm text-slate-600">
+          <FileText className="h-4 w-4 text-primary-600" />
+          <span>Ficha clínica formal del expediente</span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => window.print()}>
+            <Printer className="h-4 w-4" /> Imprimir ficha
+          </Button>
+          <Button onClick={onOpen}>
+            <Plus className="h-4 w-4" /> Nueva atención clínica
+          </Button>
+        </div>
+      </div>
+
+      <FichaClinica cfg={cfg} paciente={perfil} consultas={perfil.consultas} />
+
+      <Card className="print:hidden">
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Acciones por registro</h3>
+        {perfil.consultas.length === 0 ? (
+          <p className="text-sm text-slate-500">Use «Nueva atención clínica» para el primer registro.</p>
+        ) : (
+          <div className="space-y-2">
+            {perfil.consultas.map((c) => (
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-sm"
+              >
+                <span>
+                  {formatFecha(c.fecha)} — {c.motivo || "Atención general"}
+                  {c.medico_nombre ? ` · ${c.medico_nombre}` : ""}
+                </span>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    className="rounded p-1 text-slate-500 hover:bg-slate-100"
+                    title="Editar"
+                    onClick={() => onEditConsulta(c)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded p-1 text-rose-600 hover:bg-rose-50"
+                    title="Eliminar"
+                    onClick={async () => {
+                      if (!confirm("¿Eliminar este registro?")) return;
+                      await api.consultas.remove(c.id);
+                      toast.success("Eliminado");
+                      onRefresh();
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function TratamientosTab({
+  perfil,
+  onRefresh,
+  onOpen,
+  onEditTratamiento
+}: {
+  perfil: Perfil;
+  medicos: { id: number; nombre: string }[];
+  onRefresh: () => void;
+  onOpen: () => void;
+  onEditTratamiento: (t: Tratamiento) => void;
+}) {
+  return (
+    <Card>
+      <div className="mb-4 flex justify-between">
+        <h3 className="font-semibold">Seguimiento de tratamientos</h3>
+        <Button onClick={onOpen}>
+          <Plus className="h-4 w-4" /> Nuevo tratamiento
+        </Button>
+      </div>
+      {perfil.tratamientos.length === 0 ? (
+        <p className="text-sm text-slate-500">No hay tratamientos registrados.</p>
+      ) : (
+        <div className="space-y-3">
+          {perfil.tratamientos.map((t) => (
+            <div key={t.id} className="rounded-lg border p-4">
+              <div className="flex justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{t.nombre}</p>
+                  <p className="text-xs text-slate-500">
+                    {formatFecha(t.fecha_inicio)}
+                    {t.fecha_fin ? ` → ${formatFecha(t.fecha_fin)}` : ""}
+                    {t.medico_nombre ? ` · ${t.medico_nombre}` : ""}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    t.estado === "activo"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : t.estado === "completado"
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-amber-50 text-amber-700"
+                  }`}
+                >
+                  {t.estado}
+                </span>
+              </div>
+              {t.descripcion ? <p className="mt-2 text-sm text-slate-600">{t.descripcion}</p> : null}
+              {t.progreso_notas ? <p className="mt-1 text-sm italic text-slate-500">{t.progreso_notas}</p> : null}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="ghost" className="!text-xs" onClick={() => onEditTratamiento(t)}>
+                  <Pencil className="h-3 w-3" /> Editar / notas
+                </Button>
+                {t.estado === "activo" ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      className="!text-xs"
+                      onClick={async () => {
+                        await api.tratamientos.update(t.id, { estado: "completado", fechaFin: fechaHoyInput() });
+                        toast.success("Tratamiento completado");
+                        onRefresh();
+                      }}
+                    >
+                      Completado
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="!text-xs text-amber-700"
+                      onClick={async () => {
+                        await api.tratamientos.update(t.id, { estado: "suspendido" });
+                        toast.success("Tratamiento suspendido");
+                        onRefresh();
+                      }}
+                    >
+                      Suspender
+                    </Button>
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  className="text-xs text-rose-600 hover:underline"
+                  onClick={async () => {
+                    if (!confirm("¿Eliminar este tratamiento?")) return;
+                    await api.tratamientos.remove(t.id);
+                    toast.success("Eliminado");
+                    onRefresh();
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => void }) {
+  const [tituloEstudio, setTituloEstudio] = useState("");
+
+  async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const titulo = tituloEstudio.trim() || file.name;
+    try {
+      const dataBase64 = await fileToBase64(file);
+      await api.estudios.upload(perfil.id, {
+        titulo,
+        dataBase64,
+        mimeType: file.type,
+        nombreArchivo: file.name,
+        fechaEstudio: fechaHoyInput()
+      });
+      toast.success("Estudio cargado");
+      setTituloEstudio("");
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  return (
+    <Card>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <h3 className="font-semibold">Estudios clínicos (PDF e imágenes)</h3>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <Label>Título del estudio</Label>
+            <Input
+              className="min-w-[12rem]"
+              placeholder="Ej. Radiografía tórax"
+              value={tituloEstudio}
+              onChange={(e) => setTituloEstudio(e.target.value)}
+            />
+          </div>
+        <label className="cursor-pointer">
+          <span className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white">
+            <FileUp className="h-4 w-4" /> Subir archivo
+          </span>
+          <input type="file" accept="image/*,.pdf" className="hidden" onChange={onUpload} />
+        </label>
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {perfil.estudios.map((e) => (
+          <div key={e.id} className="rounded-lg border p-3">
+            <p className="font-medium">{e.titulo}</p>
+            <p className="text-xs text-slate-500">{formatFecha(e.fecha_estudio || "")}</p>
+            <div className="mt-2 flex gap-2">
+              <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline">
+                Ver archivo
+              </a>
+              <button
+                type="button"
+                className="text-sm text-rose-600"
+                onClick={async () => {
+                  if (!confirm("¿Eliminar?")) return;
+                  await api.estudios.remove(e.id);
+                  onRefresh();
+                }}
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RecetasTab({
+  perfil,
+  cfg,
+  onRefresh,
+  onOpen
+}: {
+  perfil: Perfil;
+  cfg: ClinicaConfig | null;
+  medicos: { id: number; nombre: string }[];
+  onRefresh: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <Card>
+      <div className="mb-4 flex justify-between">
+        <h3 className="font-semibold">Recetas médicas</h3>
+        <Button onClick={onOpen}>
+          <Plus className="h-4 w-4" /> Nueva receta
+        </Button>
+      </div>
+      {perfil.recetas.length === 0 ? (
+        <p className="text-sm text-slate-500">Sin recetas. Cree una y descargue el PDF con membrete.</p>
+      ) : (
+        perfil.recetas.map((r) => (
+          <div key={r.id} className="mb-3 rounded-lg border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{formatFecha(r.fecha)}</p>
+                {r.medico_nombre ? <p className="text-xs text-slate-500">{r.medico_nombre}</p> : null}
+              </div>
+              <div className="flex gap-2">
+                {cfg ? (
+                  <Button
+                    variant="link"
+                    onClick={() =>
+                      descargarRecetaPdf({
+                        cfg,
+                        paciente: perfil as unknown as Record<string, string | null | undefined>,
+                        receta: r,
+                        medicoNombre: r.medico_nombre
+                      })
+                    }
+                  >
+                    <Download className="h-4 w-4" /> PDF
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  className="text-sm text-rose-600 hover:underline"
+                  onClick={async () => {
+                    if (!confirm("¿Eliminar esta receta?")) return;
+                    await api.recetas.remove(r.id);
+                    toast.success("Receta eliminada");
+                    onRefresh();
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+            <pre className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{r.medicamentos}</pre>
+          </div>
+        ))
+      )}
+    </Card>
+  );
+}
+
+function LabTab({
+  perfil,
+  cfg,
+  onRefresh,
+  onOpen
+}: {
+  perfil: Perfil;
+  cfg: ClinicaConfig | null;
+  medicos: { id: number; nombre: string }[];
+  onRefresh: () => void;
+  onOpen: () => void;
+}) {
+  return (
+    <Card>
+      <div className="mb-4 flex justify-between">
+        <h3 className="font-semibold">Órdenes de laboratorio</h3>
+        <Button onClick={onOpen}>
+          <Plus className="h-4 w-4" /> Nueva orden
+        </Button>
+      </div>
+      {perfil.ordenes.length === 0 ? (
+        <p className="text-sm text-slate-500">Sin órdenes. Genere PDF con membrete de la clínica.</p>
+      ) : (
+        perfil.ordenes.map((o) => (
+          <div key={o.id} className="mb-3 rounded-lg border p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-medium">{formatFecha(o.fecha)}</p>
+                {o.medico_nombre ? <p className="text-xs text-slate-500">{o.medico_nombre}</p> : null}
+              </div>
+              <div className="flex gap-2">
+                {cfg ? (
+                  <Button
+                    variant="link"
+                    onClick={() =>
+                      descargarOrdenLabPdf({
+                        cfg,
+                        paciente: perfil as unknown as Record<string, string | null | undefined>,
+                        orden: o,
+                        medicoNombre: o.medico_nombre
+                      })
+                    }
+                  >
+                    <Download className="h-4 w-4" /> PDF membretado
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  className="text-sm text-rose-600 hover:underline"
+                  onClick={async () => {
+                    if (!confirm("¿Eliminar esta orden?")) return;
+                    await api.ordenesLab.remove(o.id);
+                    toast.success("Orden eliminada");
+                    onRefresh();
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-sm whitespace-pre-wrap">{o.estudios_solicitados}</p>
+          </div>
+        ))
+      )}
+    </Card>
+  );
+}
+
+function PagosTab({
+  perfil,
+  onRefresh,
+  onOpen
+}: {
+  perfil: Perfil;
+  onRefresh: () => void;
+  onOpen: () => void;
+}) {
+  const total = perfil.pagos.reduce((s, p) => s + p.monto, 0);
+  return (
+    <Card>
+      <div className="mb-4 flex justify-between items-center">
+        <div>
+          <h3 className="font-semibold">Historial financiero</h3>
+          <p className="text-sm text-slate-500">Total: {formatMoneda(total)}</p>
+        </div>
+        <Button onClick={onOpen}>
+          <Plus className="h-4 w-4" /> Registrar pago
+        </Button>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-slate-500">
+            <th className="py-2">Fecha</th>
+            <th>Concepto</th>
+            <th>Monto</th>
+            <th>Método</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {perfil.pagos.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-6 text-center text-slate-500">
+                Sin pagos registrados.
+              </td>
+            </tr>
+          ) : (
+            perfil.pagos.map((p) => (
+              <tr key={p.id} className="border-b border-slate-50">
+                <td className="py-2">{formatFecha(p.fecha)}</td>
+                <td>{p.concepto}</td>
+                <td className="font-medium">{formatMoneda(p.monto)}</td>
+                <td>{p.metodo_pago || "—"}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="text-rose-600 hover:underline"
+                    onClick={async () => {
+                      if (!confirm("¿Eliminar este pago?")) return;
+                      await api.pagos.remove(p.id);
+                      toast.success("Pago eliminado");
+                      onRefresh();
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function ConsultaModal({
+  pacienteId,
+  medicos,
+  consulta,
+  onClose,
+  onSaved
+}: {
+  pacienteId: number;
+  medicos: { id: number; nombre: string }[];
+  consulta?: Consulta | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const esEdicion = !!consulta;
+  const [form, setForm] = useState({
+    medicoId: consulta?.medico_id ? String(consulta.medico_id) : "",
+    fecha: consulta?.fecha?.slice(0, 10) || fechaHoyInput(),
+    motivo: consulta?.motivo || "",
+    diagnostico: consulta?.diagnostico || "",
+    tratamiento: consulta?.tratamiento || "",
+    notas: consulta?.notas || ""
+  });
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      const body = {
+        medicoId: form.medicoId ? Number(form.medicoId) : null,
+        fecha: form.fecha || fechaHoyInput(),
+        motivo: form.motivo || null,
+        diagnostico: form.diagnostico || null,
+        tratamiento: form.tratamiento || null,
+        notas: form.notas || null
+      };
+      if (esEdicion && consulta) {
+        await api.consultas.update(consulta.id, body);
+        toast.success("Atención clínica actualizada");
+      } else {
+        await api.consultas.create({ pacienteId, ...body });
+        toast.success("Atención clínica registrada en la ficha");
+      }
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar");
+    }
+  }
+  return (
+    <Modal open wide title={esEdicion ? "Editar atención clínica" : "Registro de atención clínica"} onClose={onClose}>
+      <form className="space-y-4" onSubmit={submit}>
+        <p className="text-sm text-slate-600">
+          Complete los campos para incorporar la atención a la ficha clínica formal del expediente.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Médico tratante</Label>
+            <Select value={form.medicoId} onChange={(e) => setForm({ ...form, medicoId: e.target.value })}>
+              <option value="">— Seleccionar —</option>
+              {medicos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Fecha de atención</Label>
+            <Input
+              type="date"
+              required
+              value={form.fecha}
+              onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Motivo de consulta</Label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            rows={2}
+            value={form.motivo}
+            onChange={(e) => setForm({ ...form, motivo: e.target.value })}
+            placeholder="Síntomas principales, duración, motivo de la visita…"
+          />
+        </div>
+        <div>
+          <Label>Examen físico y observaciones</Label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            rows={3}
+            value={form.notas}
+            onChange={(e) => setForm({ ...form, notas: e.target.value })}
+            placeholder="Signos vitales, hallazgos, exploración por aparatos…"
+          />
+        </div>
+        <div>
+          <Label>Diagnóstico / impresión clínica</Label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            rows={2}
+            value={form.diagnostico}
+            onChange={(e) => setForm({ ...form, diagnostico: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Plan de tratamiento e indicaciones</Label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            rows={3}
+            value={form.tratamiento}
+            onChange={(e) => setForm({ ...form, tratamiento: e.target.value })}
+            placeholder="Medicación, estudios solicitados, recomendaciones…"
+          />
+        </div>
+        <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">{esEdicion ? "Guardar cambios" : "Registrar en ficha clínica"}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function TratamientoModal({
+  pacienteId,
+  medicos,
+  tratamiento,
+  onClose,
+  onSaved
+}: {
+  pacienteId: number;
+  medicos: { id: number; nombre: string }[];
+  tratamiento?: Tratamiento | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const esEdicion = !!tratamiento;
+  const [form, setForm] = useState({
+    medicoId: tratamiento?.medico_id ? String(tratamiento.medico_id) : "",
+    nombre: tratamiento?.nombre || "",
+    descripcion: tratamiento?.descripcion || "",
+    fechaInicio: tratamiento?.fecha_inicio?.slice(0, 10) || fechaHoyInput(),
+    progresoNotas: tratamiento?.progreso_notas || "",
+    estado: (tratamiento?.estado || "activo") as EstadoTratamiento
+  });
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const body = {
+      nombre: form.nombre,
+      descripcion: form.descripcion,
+      fechaInicio: form.fechaInicio,
+      progresoNotas: form.progresoNotas,
+      medicoId: form.medicoId ? Number(form.medicoId) : null,
+      estado: form.estado
+    };
+    if (esEdicion && tratamiento) {
+      await api.tratamientos.update(tratamiento.id, body);
+      toast.success("Tratamiento actualizado");
+    } else {
+      await api.tratamientos.create({ pacienteId, ...body });
+      toast.success("Tratamiento registrado");
+    }
+    onSaved();
+    onClose();
+  }
+  return (
+    <Modal open wide title={esEdicion ? "Editar tratamiento" : "Nuevo tratamiento"} onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
+        <div>
+          <Label>Médico responsable</Label>
+          <Select value={form.medicoId} onChange={(e) => setForm({ ...form, medicoId: e.target.value })}>
+            <option value="">— Sin asignar —</option>
+            {medicos.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.nombre}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label>Nombre del tratamiento *</Label>
+          <Input required value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} />
+        </div>
+        <div>
+          <Label>Descripción</Label>
+          <Input value={form.descripcion} onChange={(e) => setForm({ ...form, descripcion: e.target.value })} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Fecha inicio</Label>
+            <Input type="date" value={form.fechaInicio} onChange={(e) => setForm({ ...form, fechaInicio: e.target.value })} />
+          </div>
+          {esEdicion ? (
+            <div>
+              <Label>Estado</Label>
+              <Select
+                value={form.estado}
+                onChange={(e) => setForm({ ...form, estado: e.target.value as EstadoTratamiento })}
+              >
+                <option value="activo">Activo</option>
+                <option value="completado">Completado</option>
+                <option value="suspendido">Suspendido</option>
+              </Select>
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <Label>Notas de seguimiento</Label>
+          <textarea
+            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+            rows={3}
+            value={form.progresoNotas}
+            onChange={(e) => setForm({ ...form, progresoNotas: e.target.value })}
+            placeholder="Evolución, adherencia, próximos controles…"
+          />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">Guardar</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function RecetaModal({
+  pacienteId,
+  medicos,
+  onClose,
+  onSaved
+}: {
+  pacienteId: number;
+  medicos: { id: number; nombre: string }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({ medicoId: "", fecha: fechaHoyInput(), medicamentos: "", indicaciones: "" });
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api.recetas.create({
+        pacienteId,
+        medicoId: form.medicoId ? Number(form.medicoId) : null,
+        fecha: form.fecha || fechaHoyInput(),
+        medicamentos: form.medicamentos.trim() || "Medicamentos por definir",
+        indicaciones: form.indicaciones || null
+      });
+      toast.success("Receta creada");
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar la receta");
+    }
+  }
+  return (
+    <Modal open wide title="Nueva receta médica" onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Médico</Label>
+            <Select value={form.medicoId} onChange={(e) => setForm({ ...form, medicoId: e.target.value })}>
+              <option value="">— Seleccionar —</option>
+              {medicos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Fecha</Label>
+            <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+          </div>
+        </div>
+        <div>
+          <Label>Medicamentos</Label>
+          <textarea
+            className="w-full rounded-lg border border-slate-200 p-3 text-sm"
+            rows={5}
+            value={form.medicamentos}
+            onChange={(e) => setForm({ ...form, medicamentos: e.target.value })}
+            placeholder="Un medicamento por línea…"
+          />
+        </div>
+        <div>
+          <Label>Indicaciones</Label>
+          <Input value={form.indicaciones} onChange={(e) => setForm({ ...form, indicaciones: e.target.value })} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">Guardar</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function LabModal({
+  pacienteId,
+  medicos,
+  onClose,
+  onSaved
+}: {
+  pacienteId: number;
+  medicos: { id: number; nombre: string }[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [form, setForm] = useState({
+    medicoId: "",
+    fecha: fechaHoyInput(),
+    estudiosSolicitados: "",
+    diagnosticoPresuntivo: "",
+    notas: ""
+  });
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    try {
+      await api.ordenesLab.create({
+        pacienteId,
+        medicoId: form.medicoId ? Number(form.medicoId) : null,
+        fecha: form.fecha || fechaHoyInput(),
+        estudiosSolicitados: form.estudiosSolicitados.trim() || "Estudios de laboratorio",
+        diagnosticoPresuntivo: form.diagnosticoPresuntivo || null,
+        notas: form.notas || null
+      });
+      toast.success("Orden creada");
+      onSaved();
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo guardar la orden");
+    }
+  }
+  return (
+    <Modal open wide title="Orden de laboratorio" onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label>Médico solicitante</Label>
+            <Select value={form.medicoId} onChange={(e) => setForm({ ...form, medicoId: e.target.value })}>
+              <option value="">— Seleccionar —</option>
+              {medicos.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.nombre}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Fecha</Label>
+            <Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} />
+          </div>
+        </div>
+        <div>
+          <Label>Estudios solicitados</Label>
+          <textarea
+            className="w-full rounded-lg border p-3 text-sm"
+            rows={4}
+            value={form.estudiosSolicitados}
+            onChange={(e) => setForm({ ...form, estudiosSolicitados: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Diagnóstico presuntivo</Label>
+          <Input
+            value={form.diagnosticoPresuntivo}
+            onChange={(e) => setForm({ ...form, diagnosticoPresuntivo: e.target.value })}
+          />
+        </div>
+        <div>
+          <Label>Notas</Label>
+          <Input value={form.notas} onChange={(e) => setForm({ ...form, notas: e.target.value })} />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">Guardar</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function PagoModal({ pacienteId, onClose, onSaved }: { pacienteId: number; onClose: () => void; onSaved: () => void }) {
+  const [form, setForm] = useState({ concepto: "", monto: "", fecha: fechaHoyInput(), metodoPago: "efectivo", referencia: "" });
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    await api.pagos.create({ pacienteId, ...form, monto: Number(form.monto) });
+    toast.success("Pago registrado");
+    onSaved();
+    onClose();
+  }
+  return (
+    <Modal open title="Registrar pago" onClose={onClose}>
+      <form className="space-y-3" onSubmit={submit}>
+        <div><Label>Concepto *</Label><Input required value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value })} /></div>
+        <div><Label>Monto (GTQ) *</Label><Input type="number" step="0.01" required value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} /></div>
+        <div><Label>Fecha</Label><Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
+        <div><Label>Método</Label><Select value={form.metodoPago} onChange={(e) => setForm({ ...form, metodoPago: e.target.value })}><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="transferencia">Transferencia</option></Select></div>
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit">Guardar</Button></div>
+      </form>
+    </Modal>
+  );
+}

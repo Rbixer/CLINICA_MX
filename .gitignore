@@ -1,0 +1,10 @@
+node_modules/
+release/
+backend-node/data/
+backend-node/uploads/
+backend/Clinica.Api/uploads/
+backend/**/bin/
+backend/**/obj/
+dist/
+*.log
+.DS_Store

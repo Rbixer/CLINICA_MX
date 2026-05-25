@@ -1,0 +1,35 @@
+{
+  "name": "clinica-gestion",
+  "version": "1.0.0",
+  "private": true,
+  "author": "Clinica Integral",
+  "description": "Aplicación clínica de gestión",
+  "main": "electron-app/main.cjs",
+  "scripts": {
+    "install:all": "npm install --prefix frontend",
+    "backend": "dotnet run --project backend/Clinica.Api/Clinica.Api.csproj",
+    "backend:desktop": "ASPNETCORE_ENVIRONMENT=Desktop dotnet run --project backend/Clinica.Api/Clinica.Api.csproj",
+    "desktop": "DOTNET_ENVIRONMENT=Development dotnet run --project backend/Clinica.Desktop/Clinica.Desktop.csproj",
+    "desktop:build": "dotnet build backend/Clinica.sln",
+    "backend:build": "dotnet build backend/Clinica.sln",
+    "frontend": "npm run dev --prefix frontend",
+    "dev": "npm run backend & npm run frontend",
+    "sql:up": "docker compose up -d sqlserver",
+    "sql:down": "docker compose down",
+    "electron": "env -u ELECTRON_RUN_AS_NODE electron . --no-sandbox",
+    "electron:dev": "concurrently -k -n api,web,app \"npm run backend\" \"npm run frontend\" \"wait-on -t 120000 http://127.0.0.1:4100/api/health http://127.0.0.1:5176 && npm run electron\"",
+    "electron:dist": "npm run build --prefix frontend && concurrently -k -n api,app \"npm run backend\" \"wait-on -t 120000 http://127.0.0.1:4100/api/health && CLINICA_ELECTRON_USE_DIST=1 npm run electron\"",
+    "electron:build": "npm run build --prefix frontend && electron-builder --config electron-builder.yml",
+    "backend:publish:win": "dotnet publish backend/Clinica.Api/Clinica.Api.csproj -c Release -r win-x64 --self-contained true /p:PublishReadyToRun=true -o release/api-win",
+    "electron:build:win": "npm run build --prefix frontend && npm run backend:publish:win && electron-builder --win --config electron-builder.yml",
+    "electron:package:win": "npm run build --prefix frontend && npm run backend:publish:win && electron-builder --win --dir --config electron-builder.yml && node scripts/zip-windows-prueba.cjs",
+    "electron:portable:win": "npm run build --prefix frontend && npm run backend:publish:win && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --config electron-builder.yml"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "electron": "^35.1.2",
+    "electron-builder": "^25.1.8",
+    "http-proxy": "^1.18.1",
+    "wait-on": "^8.0.3"
+  }
+}

@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --color-primary-50: #eff6ff;
+  --color-primary-100: #dbeafe;
+  --color-primary-500: #3b82f6;
+  --color-primary-600: #2563eb;
+  --color-primary-700: #1d4ed8;
+  --color-surface: #f8fafc;
+  --color-sidebar: #ffffff;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  @apply bg-[#f8fafc] text-slate-800 antialiased;
+}
+
+@keyframes notif-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.notif-toast-enter {
+  animation: notif-toast-in 0.35s ease-out;
+}
+
+.ficha-seccion-titulo {
+  @apply text-xs font-bold uppercase tracking-widest text-slate-800;
+  border-left: 3px solid #1e40af;
+  padding-left: 0.5rem;
+}
+
+.ficha-th {
+  @apply w-36 border border-slate-200 bg-slate-100 px-3 py-2 text-left text-[10px] font-semibold uppercase text-slate-700;
+}
+
+.ficha-td {
+  @apply border border-slate-200 px-3 py-2 text-slate-800;
+}
+
+@media print {
+  body {
+    background: white !important;
+  }
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  .ficha-clinica {
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+}
+
+/* Scrollbar suave en tablas */
+.table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.table-scroll::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-slate-200;
+}

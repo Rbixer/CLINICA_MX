@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Clinica.Desktop.ViewModels"
+             x:Class="Clinica.Desktop.Views.PacientesView"
+             x:DataType="vm:PacientesViewModel">
+  <DockPanel>
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
+      <TextBox Width="280" Watermark="Buscar por nombre, DPI o teléfono" Text="{Binding Busqueda}"/>
+      <Button Content="Buscar" Command="{Binding BuscarCommand}"/>
+      <Button Content="+ Nuevo" Command="{Binding NuevoCommand}"/>
+      <Button Content="Editar" Command="{Binding EditarCommand}"/>
+      <Button Content="Eliminar" Command="{Binding EliminarCommand}"/>
+      <TextBlock Text="{Binding Mensaje}" VerticalAlignment="Center" Margin="12,0,0,0" Opacity="0.7"/>
+    </StackPanel>
+    <ListBox ItemsSource="{Binding Pacientes}" SelectedItem="{Binding Seleccionado}">
+      <ListBox.ItemTemplate>
+        <DataTemplate>
+          <Border Padding="8,6" BorderBrush="#ddd" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="2*,*,120,120">
+              <TextBlock Grid.Column="0" Text="{Binding Nombre}" FontWeight="SemiBold"/>
+              <TextBlock Grid.Column="1" Text="{Binding Dpi}" Opacity="0.8"/>
+              <TextBlock Grid.Column="2" Text="{Binding Telefono}"/>
+              <TextBlock Grid.Column="3" Text="{Binding Email}" Opacity="0.7"/>
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

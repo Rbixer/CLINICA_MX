@@ -1,0 +1,43 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Clinica.Desktop.ViewModels"
+             x:Class="Clinica.Desktop.Views.DashboardView"
+             x:DataType="vm:DashboardViewModel">
+  <StackPanel Spacing="12">
+    <Grid ColumnDefinitions="*,*,*" RowDefinitions="Auto">
+      <Border Grid.Column="0" Margin="0,0,8,0" Padding="16" Background="#e8f4fc" CornerRadius="8">
+        <StackPanel>
+          <TextBlock Text="Pacientes" FontSize="13" Opacity="0.7"/>
+          <TextBlock Text="{Binding TotalPacientes}" FontSize="32" FontWeight="Bold"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="1" Margin="4,0" Padding="16" Background="#e8f4fc" CornerRadius="8">
+        <StackPanel>
+          <TextBlock Text="Citas hoy" FontSize="13" Opacity="0.7"/>
+          <TextBlock Text="{Binding CitasHoy}" FontSize="32" FontWeight="Bold"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="2" Margin="8,0,0,0" Padding="16" Background="#e8f4fc" CornerRadius="8">
+        <StackPanel>
+          <TextBlock Text="Citas pendientes" FontSize="13" Opacity="0.7"/>
+          <TextBlock Text="{Binding CitasPendientes}" FontSize="32" FontWeight="Bold"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+    <Grid ColumnDefinitions="*,*">
+      <Border Grid.Column="0" Margin="0,0,8,0" Padding="16" Background="#f0f9e8" CornerRadius="8">
+        <StackPanel>
+          <TextBlock Text="Pagos del mes (Q)" FontSize="13" Opacity="0.7"/>
+          <TextBlock Text="{Binding PagosMes, StringFormat={}{0:N2}}" FontSize="28" FontWeight="Bold"/>
+        </StackPanel>
+      </Border>
+      <Border Grid.Column="1" Margin="8,0,0,0" Padding="16" Background="#f0f9e8" CornerRadius="8">
+        <StackPanel>
+          <TextBlock Text="Documentos médicos" FontSize="13" Opacity="0.7"/>
+          <TextBlock Text="{Binding EstudiosTotal}" FontSize="28" FontWeight="Bold"/>
+        </StackPanel>
+      </Border>
+    </Grid>
+    <TextBlock Text="{Binding NombreClinica}" FontSize="14" Opacity="0.6"/>
+  </StackPanel>
+</UserControl>

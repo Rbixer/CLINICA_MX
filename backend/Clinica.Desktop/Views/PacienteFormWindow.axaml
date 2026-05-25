@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Clinica.Desktop.ViewModels"
+        x:Class="Clinica.Desktop.Views.PacienteFormWindow"
+        x:DataType="vm:PacienteFormViewModel"
+        Title="Paciente"
+        Width="480" Height="420"
+        WindowStartupLocation="CenterOwner">
+  <StackPanel Margin="20" Spacing="10">
+    <TextBlock Text="Nombre *"/>
+    <TextBox Text="{Binding Nombre}"/>
+    <TextBlock Text="DPI *"/>
+    <TextBox Text="{Binding Dpi}"/>
+    <TextBlock Text="Teléfono *"/>
+    <TextBox Text="{Binding Telefono}"/>
+    <TextBlock Text="Email"/>
+    <TextBox Text="{Binding Email}"/>
+    <Grid ColumnDefinitions="*,*">
+      <StackPanel Grid.Column="0" Margin="0,0,8,0">
+        <TextBlock Text="Sexo"/>
+        <TextBox Text="{Binding Sexo}"/>
+      </StackPanel>
+      <StackPanel Grid.Column="1" Margin="8,0,0,0">
+        <TextBlock Text="Alergias"/>
+        <TextBox Text="{Binding Alergias}"/>
+      </StackPanel>
+    </Grid>
+    <TextBlock Text="Notas"/>
+    <TextBox Text="{Binding Notas}" AcceptsReturn="True" Height="60"/>
+    <TextBlock Text="{Binding Error}" Foreground="Red"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="Cancelar" Command="{Binding CancelarCommand}"/>
+      <Button Content="Guardar" Command="{Binding GuardarCommand}"/>
+    </StackPanel>
+  </StackPanel>
+</Window>

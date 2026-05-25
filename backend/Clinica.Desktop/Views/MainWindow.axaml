@@ -1,0 +1,29 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Clinica.Desktop.ViewModels"
+        x:Class="Clinica.Desktop.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Clínica Integral — Escritorio"
+        Width="1200" Height="760"
+        MinWidth="900" MinHeight="600">
+
+  <Grid ColumnDefinitions="220,*">
+    <Border Grid.Column="0" Background="#1e3a5f" Padding="12">
+      <StackPanel Spacing="6">
+        <TextBlock Text="Clínica Integral" Foreground="White" FontSize="18" FontWeight="Bold" Margin="0,0,0,12"/>
+        <TextBlock Text="{Binding EstadoDb}" Foreground="#b8d4f0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+        <Button Content="Panel general" Command="{Binding NavigateCommand}" CommandParameter="dashboard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+        <Button Content="Pacientes" Command="{Binding NavigateCommand}" CommandParameter="pacientes" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+        <Button Content="Agenda / Citas" Command="{Binding NavigateCommand}" CommandParameter="citas" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+        <Button Content="Pagos" Command="{Binding NavigateCommand}" CommandParameter="pagos" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+        <Button Content="Expediente clínico" Command="{Binding NavigateCommand}" CommandParameter="expediente" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"/>
+      </StackPanel>
+    </Border>
+
+    <DockPanel Grid.Column="1" Margin="16">
+      <TextBlock DockPanel.Dock="Top" Text="{Binding TituloPagina}" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,12"/>
+      <ContentControl Content="{Binding CurrentPage}"/>
+    </DockPanel>
+  </Grid>
+</Window>
