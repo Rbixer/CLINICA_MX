@@ -3,61 +3,15 @@ import autoTable from "jspdf-autotable";
 import type { ClinicaConfig } from "./clinicaPdf";
 import { calcularEdad, formatFechaLarga } from "../edad";
 import { formatFecha } from "../format";
+import { drawPatientPhoto, drawPdfFooter, drawProfessionalHeader, imageUrlToJpegDataUrl, PDF_COLORS } from "./helpers";
 
-const AZUL: [number, number, number] = [30, 64, 175];
+const AZUL = PDF_COLORS.brand;
 const GRIS_CLARO: [number, number, number] = [241, 245, 249];
 const TEXTO: [number, number, number] = [30, 41, 59];
 
-function texto(val: string | null | undefined) {
+function texto(val: string | number | null | undefined) {
   const t = String(val || "").trim();
   return t || "—";
-}
-
-function dibujarEncabezadoFormal(doc: jsPDF, cfg: ClinicaConfig, pacienteId: number) {
-  const folio = `EXP-${String(pacienteId).padStart(5, "0")}-${new Date().getFullYear()}`;
-
-  doc.setDrawColor(...AZUL);
-  doc.setLineWidth(0.8);
-  doc.line(14, 12, 196, 12);
-  doc.setLineWidth(0.3);
-  doc.line(14, 13.5, 196, 13.5);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(100, 116, 139);
-  doc.text("DOCUMENTO CLÍNICO CONFIDENCIAL", 105, 18, { align: "center" });
-
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.setTextColor(...AZUL);
-  doc.text(texto(cfg.nombre).toUpperCase(), 105, 26, { align: "center" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.setTextColor(...TEXTO);
-  const contacto = [cfg.direccion, cfg.telefono ? `Tel. ${cfg.telefono}` : null, cfg.email]
-    .filter(Boolean)
-    .join("  ·  ");
-  if (contacto) doc.text(contacto, 105, 32, { align: "center" });
-
-  doc.setDrawColor(...AZUL);
-  doc.setFillColor(...GRIS_CLARO);
-  doc.rect(14, 36, 182, 10, "FD");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.setTextColor(...AZUL);
-  doc.text("FICHA CLÍNICA — HISTORIA CLÍNICA INTEGRAL", 105, 42.5, { align: "center" });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(80, 80, 80);
-  doc.text(`Folio: ${folio}`, 14, 52);
-  doc.text(`Fecha de emisión: ${formatFechaLarga(new Date().toISOString().slice(0, 10))}`, 120, 52);
-
-  doc.setLineWidth(0.5);
-  doc.line(14, 55, 196, 55);
-
-  return 58;
 }
 
 function tituloSeccion(doc: jsPDF, titulo: string, y: number) {
@@ -90,13 +44,13 @@ function bloqueCampo(doc: jsPDF, label: string, value: string, x: number, y: num
   return y + h + 5;
 }
 
-export function descargarFichaClinicaPdf({
+export async function descargarFichaClinicaPdf({
   cfg,
   paciente,
   consultas
 }: {
   cfg: ClinicaConfig;
-  paciente: Record<string, string | null | undefined> & { id?: number };
+  paciente: Record<string, string | number | null | undefined> & { id?: number; foto_url?: string | null };
   consultas: Array<{
     fecha: string;
     motivo?: string | null;
@@ -108,9 +62,18 @@ export function descargarFichaClinicaPdf({
 }) {
   const doc = new jsPDF();
   const pid = Number(paciente.id) || 0;
-  let y = dibujarEncabezadoFormal(doc, cfg, pid);
+  const folio = `EXP-${String(pid).padStart(5, "0")}-${new Date().getFullYear()}`;
+  let y = await drawProfessionalHeader(doc, cfg, "Ficha clínica", {
+    subtitle: "Historia clínica integral del paciente",
+    meta: [
+      ["Folio", folio],
+      ["Emisión", formatFechaLarga(new Date().toISOString().slice(0, 10))]
+    ]
+  });
+  const fotoPaciente = await imageUrlToJpegDataUrl(String(paciente.foto_url || ""));
 
   y = tituloSeccion(doc, "I. Datos de identificación del paciente", y);
+  const datosY = y;
 
   autoTable(doc, {
     startY: y,
@@ -145,10 +108,17 @@ export function descargarFichaClinicaPdf({
         calcularEdad(String(paciente.fecha_nacimiento || ""))
       ]
     ],
-    margin: { left: 14, right: 14 }
+    margin: { left: 14, right: fotoPaciente ? 55 : 14 }
   });
+  if (fotoPaciente) {
+    drawPatientPhoto(doc, fotoPaciente, 158, datosY, 30, 34);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text("FOTOGRAFÍA", 173, datosY + 38, { align: "center" });
+  }
 
-  y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  y = Math.max((doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY, datosY + 40) + 6;
 
   y = tituloSeccion(doc, "II. Antecedentes y alertas médicas", y);
   y = bloqueCampo(doc, "Alergias conocidas", texto(paciente.alergias), 14, y, 182);
@@ -219,6 +189,7 @@ export function descargarFichaClinicaPdf({
   doc.text("Firma y sello del médico tratante", 52, y + 16, { align: "center" });
   doc.text("Firma del paciente o responsable", 158, y + 16, { align: "center" });
 
+  drawPdfFooter(doc);
   doc.save(`ficha-clinica-${paciente.dpi || pid}.pdf`);
 }
 

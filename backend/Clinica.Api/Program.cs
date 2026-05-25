@@ -42,6 +42,18 @@ using (var scope = app.Services.CreateScope())
             "IF COL_LENGTH('citas', 'PacienteId') IS NOT NULL ALTER TABLE citas ALTER COLUMN PacienteId INT NULL");
     }
     catch { /* columna ya nullable o tabla distinta */ }
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            "IF COL_LENGTH('consultas', 'FotoSeguimiento') IS NULL ALTER TABLE consultas ADD FotoSeguimiento NVARCHAR(500) NULL");
+        await db.Database.ExecuteSqlRawAsync(
+            "IF COL_LENGTH('consultas', 'FotoSeguimientoNombreOriginal') IS NULL ALTER TABLE consultas ADD FotoSeguimientoNombreOriginal NVARCHAR(300) NULL");
+        await db.Database.ExecuteSqlRawAsync(
+            "IF COL_LENGTH('consultas', 'FotoSeguimientoMimeType') IS NULL ALTER TABLE consultas ADD FotoSeguimientoMimeType NVARCHAR(80) NULL");
+        await db.Database.ExecuteSqlRawAsync(
+            "IF COL_LENGTH('consultas', 'FotoSeguimientoTamano') IS NULL ALTER TABLE consultas ADD FotoSeguimientoTamano BIGINT NULL");
+    }
+    catch { /* columnas de seguimiento no disponibles en proveedores no SQL Server */ }
 }
 
 if (app.Environment.IsDevelopment())

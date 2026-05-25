@@ -1,6 +1,7 @@
 using Clinica.Core.Data;
 using Clinica.Core.Data.Entities;
 using Clinica.Api.Infrastructure;
+using Clinica.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,7 +9,7 @@ namespace Clinica.Api.Controllers;
 
 [ApiController]
 [Route("api/consultas")]
-public class ConsultasController(ClinicaDbContext db) : ControllerBase
+public class ConsultasController(ClinicaDbContext db, FileStorageService files) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> List([FromQuery] int? pacienteId)
@@ -27,25 +28,41 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         if (!await db.Pacientes.AnyAsync(p => p.Id == body.PacienteId))
             return NotFound(new { message = "Paciente no encontrado." });
 
-        var c = new Consulta
+        try
         {
-            PacienteId = body.PacienteId.Value,
-            MedicoId = body.MedicoId,
-            CitaId = body.CitaId,
-            Fecha = body.Fecha!,
-            Motivo = body.Motivo?.Trim(),
-            Diagnostico = body.Diagnostico?.Trim(),
-            Tratamiento = body.Tratamiento?.Trim(),
-            Notas = body.Notas?.Trim()
-        };
-        db.Consultas.Add(c);
-        if (body.CitaId > 0)
-        {
-            var cita = await db.Citas.FindAsync(body.CitaId);
-            if (cita != null) cita.Estado = "atendida";
+            var c = new Consulta
+            {
+                PacienteId = body.PacienteId.Value,
+                MedicoId = body.MedicoId,
+                CitaId = body.CitaId,
+                Fecha = body.Fecha!,
+                Motivo = body.Motivo?.Trim(),
+                Diagnostico = body.Diagnostico?.Trim(),
+                Tratamiento = body.Tratamiento?.Trim(),
+                Notas = body.Notas?.Trim()
+            };
+            if (!string.IsNullOrWhiteSpace(body.FotoDataBase64))
+            {
+                var saved = GuardarFotoSeguimiento(body.PacienteId.Value, body.FotoDataBase64!, body.FotoMimeType, body.FotoNombreArchivo);
+                c.FotoSeguimiento = saved.Relative;
+                c.FotoSeguimientoNombreOriginal = body.FotoNombreArchivo ?? saved.Name;
+                c.FotoSeguimientoMimeType = saved.Mime;
+                c.FotoSeguimientoTamano = saved.Size;
+            }
+
+            db.Consultas.Add(c);
+            if (body.CitaId > 0)
+            {
+                var cita = await db.Citas.FindAsync(body.CitaId);
+                if (cita != null) cita.Estado = "atendida";
+            }
+            await db.SaveChangesAsync();
+            return StatusCode(201, Map(await db.Consultas.Include(x => x.Paciente).Include(x => x.Medico).FirstAsync(x => x.Id == c.Id)));
         }
-        await db.SaveChangesAsync();
-        return StatusCode(201, Map(await db.Consultas.Include(x => x.Paciente).Include(x => x.Medico).FirstAsync(x => x.Id == c.Id)));
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     [HttpPatch("{id}")]
@@ -62,6 +79,28 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         if (body.Notas != null) c.Notas = body.Notas.Trim();
         if (body.MedicoId.HasValue) c.MedicoId = body.MedicoId;
 
+        try
+        {
+            if (body.EliminarFotoSeguimiento == true)
+            {
+                files.DeleteIfExists(c.FotoSeguimiento);
+                LimpiarFotoSeguimiento(c);
+            }
+            if (!string.IsNullOrWhiteSpace(body.FotoDataBase64))
+            {
+                var saved = GuardarFotoSeguimiento(c.PacienteId, body.FotoDataBase64!, body.FotoMimeType, body.FotoNombreArchivo);
+                files.DeleteIfExists(c.FotoSeguimiento);
+                c.FotoSeguimiento = saved.Relative;
+                c.FotoSeguimientoNombreOriginal = body.FotoNombreArchivo ?? saved.Name;
+                c.FotoSeguimientoMimeType = saved.Mime;
+                c.FotoSeguimientoTamano = saved.Size;
+            }
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+
         await db.SaveChangesAsync();
         return Ok(Map(await db.Consultas.Include(x => x.Paciente).Include(x => x.Medico).FirstAsync(x => x.Id == c.Id)));
     }
@@ -72,11 +111,16 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         var cid = ClinicaHelpers.ParseId(id);
         if (cid == null) return BadRequest(new { message = "ID inválido." });
         var c = await db.Consultas.FindAsync(cid);
-        if (c != null) { db.Consultas.Remove(c); await db.SaveChangesAsync(); }
+        if (c != null)
+        {
+            files.DeleteIfExists(c.FotoSeguimiento);
+            db.Consultas.Remove(c);
+            await db.SaveChangesAsync();
+        }
         return Ok(new { ok = true });
     }
 
-    private static object Map(Consulta c) => new
+    private object Map(Consulta c) => new
     {
         id = c.Id,
         paciente_id = c.PacienteId,
@@ -87,9 +131,29 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         diagnostico = c.Diagnostico,
         tratamiento = c.Tratamiento,
         notas = c.Notas,
+        foto_seguimiento = c.FotoSeguimiento,
+        foto_seguimiento_url = c.FotoSeguimiento != null ? files.PublicUrl(c.FotoSeguimiento) : null,
+        foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
+        foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
+        foto_seguimiento_tamano = c.FotoSeguimientoTamano,
         paciente_nombre = c.Paciente?.Nombre,
         medico_nombre = c.Medico?.Nombre
     };
+
+    private FileStorageService.SavedFile GuardarFotoSeguimiento(int pacienteId, string dataBase64, string? mimeType, string? nombreArchivo)
+    {
+        if (!string.IsNullOrWhiteSpace(mimeType) && !mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("La foto de seguimiento debe ser una imagen.");
+        return files.SaveBase64($"consultas/{pacienteId}", dataBase64, mimeType, nombreArchivo, maxMb: 8);
+    }
+
+    private static void LimpiarFotoSeguimiento(Consulta c)
+    {
+        c.FotoSeguimiento = null;
+        c.FotoSeguimientoNombreOriginal = null;
+        c.FotoSeguimientoMimeType = null;
+        c.FotoSeguimientoTamano = null;
+    }
 
     public class ConsultaRequest
     {
@@ -101,6 +165,9 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         public string? Diagnostico { get; set; }
         public string? Tratamiento { get; set; }
         public string? Notas { get; set; }
+        public string? FotoDataBase64 { get; set; }
+        public string? FotoMimeType { get; set; }
+        public string? FotoNombreArchivo { get; set; }
     }
 
     public class ConsultaPatchRequest
@@ -110,5 +177,9 @@ public class ConsultasController(ClinicaDbContext db) : ControllerBase
         public string? Diagnostico { get; set; }
         public string? Tratamiento { get; set; }
         public string? Notas { get; set; }
+        public string? FotoDataBase64 { get; set; }
+        public string? FotoMimeType { get; set; }
+        public string? FotoNombreArchivo { get; set; }
+        public bool? EliminarFotoSeguimiento { get; set; }
     }
 }

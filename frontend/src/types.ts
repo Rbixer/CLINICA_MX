@@ -60,6 +60,11 @@ export interface Consulta {
   diagnostico: string | null;
   tratamiento: string | null;
   notas: string | null;
+  foto_seguimiento: string | null;
+  foto_seguimiento_url?: string | null;
+  foto_seguimiento_nombre_original?: string | null;
+  foto_seguimiento_mime_type?: string | null;
+  foto_seguimiento_tamano?: number | null;
   medico_nombre?: string;
 }
 

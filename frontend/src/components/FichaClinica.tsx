@@ -4,7 +4,17 @@ import { formatFecha } from "../utils/format";
 
 type PacienteFicha = Pick<
   Paciente,
-  "id" | "nombre" | "dpi" | "telefono" | "email" | "direccion" | "fecha_nacimiento" | "sexo" | "alergias" | "notas"
+  | "id"
+  | "nombre"
+  | "dpi"
+  | "telefono"
+  | "email"
+  | "direccion"
+  | "fecha_nacimiento"
+  | "sexo"
+  | "alergias"
+  | "notas"
+  | "foto_url"
 >;
 
 export default function FichaClinica({
@@ -50,32 +60,44 @@ export default function FichaClinica({
 
       <section className="border-b border-slate-200 px-6 py-4">
         <h4 className="ficha-seccion-titulo">I. Datos de identificación del paciente</h4>
-        <table className="mt-3 w-full border-collapse text-sm">
-          <tbody>
-            <Fila label="Nombre completo" value={paciente.nombre} colSpan={3} />
-            <tr className="border border-slate-200">
-              <th className="ficha-th">No. identificación (DPI)</th>
-              <td className="ficha-td">{paciente.dpi}</td>
-              <th className="ficha-th">Teléfono</th>
-              <td className="ficha-td">{paciente.telefono}</td>
-            </tr>
-            <tr className="border border-slate-200">
-              <th className="ficha-th">Correo</th>
-              <td className="ficha-td">{paciente.email || "—"}</td>
-              <th className="ficha-th">Sexo</th>
-              <td className="ficha-td">
-                {paciente.sexo === "M" ? "Masculino" : paciente.sexo === "F" ? "Femenino" : "—"}
-              </td>
-            </tr>
-            <Fila label="Dirección" value={paciente.direccion} colSpan={3} />
-            <tr className="border border-slate-200">
-              <th className="ficha-th">Fecha de nacimiento</th>
-              <td className="ficha-td">{formatFecha(paciente.fecha_nacimiento || "")}</td>
-              <th className="ficha-th">Edad</th>
-              <td className="ficha-td">{calcularEdad(paciente.fecha_nacimiento)}</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="mt-3 flex items-start gap-4">
+          <table className="w-full flex-1 border-collapse text-sm">
+            <tbody>
+              <Fila label="Nombre completo" value={paciente.nombre} colSpan={3} />
+              <tr className="border border-slate-200">
+                <th className="ficha-th">No. identificación (DPI)</th>
+                <td className="ficha-td">{paciente.dpi}</td>
+                <th className="ficha-th">Teléfono</th>
+                <td className="ficha-td">{paciente.telefono}</td>
+              </tr>
+              <tr className="border border-slate-200">
+                <th className="ficha-th">Correo</th>
+                <td className="ficha-td">{paciente.email || "—"}</td>
+                <th className="ficha-th">Sexo</th>
+                <td className="ficha-td">
+                  {paciente.sexo === "M" ? "Masculino" : paciente.sexo === "F" ? "Femenino" : "—"}
+                </td>
+              </tr>
+              <Fila label="Dirección" value={paciente.direccion} colSpan={3} />
+              <tr className="border border-slate-200">
+                <th className="ficha-th">Fecha de nacimiento</th>
+                <td className="ficha-td">{formatFecha(paciente.fecha_nacimiento || "")}</td>
+                <th className="ficha-th">Edad</th>
+                <td className="ficha-td">{calcularEdad(paciente.fecha_nacimiento)}</td>
+              </tr>
+            </tbody>
+          </table>
+          {paciente.foto_url ? (
+            <div className="w-28 shrink-0 text-center">
+              <img
+                src={paciente.foto_url}
+                alt={`Fotografía de ${paciente.nombre}`}
+                className="h-28 w-28 rounded border border-slate-200 object-cover"
+              />
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Fotografía</p>
+            </div>
+          ) : null}
+        </div>
       </section>
 
       <section className="border-b border-slate-200 px-6 py-4">
@@ -107,6 +129,20 @@ export default function FichaClinica({
                   <CampoBloque label="Examen físico y observaciones" value={c.notas} />
                   <CampoBloque label="Diagnóstico / impresión clínica" value={c.diagnostico} />
                   <CampoBloque label="Plan de tratamiento e indicaciones" value={c.tratamiento} />
+                  {c.foto_seguimiento_url ? (
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                        Foto de seguimiento
+                      </p>
+                      <a href={c.foto_seguimiento_url} target="_blank" rel="noreferrer" className="mt-1 block">
+                        <img
+                          src={c.foto_seguimiento_url}
+                          alt={`Foto de seguimiento ${formatFecha(c.fecha)}`}
+                          className="max-h-64 rounded border border-slate-200 object-contain"
+                        />
+                      </a>
+                    </div>
+                  ) : null}
                   <p className="text-xs text-slate-600">
                     <span className="font-semibold uppercase">Médico tratante:</span>{" "}
                     {c.medico_nombre || "No especificado"}

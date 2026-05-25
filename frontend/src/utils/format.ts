@@ -25,9 +25,9 @@ export function formatFechaHora(iso: string) {
 }
 
 export function formatMoneda(monto: number) {
-  return new Intl.NumberFormat("es-GT", {
+  return new Intl.NumberFormat("es-MX", {
     style: "currency",
-    currency: "GTQ",
+    currency: "MXN",
     maximumFractionDigits: 0
   }).format(monto);
 }

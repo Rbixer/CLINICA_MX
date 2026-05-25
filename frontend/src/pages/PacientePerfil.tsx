@@ -1,17 +1,18 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
-import { ArrowLeft, Download, FileText, FileUp, Pencil, Plus, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Camera, Download, FileText, FileUp, Image as ImageIcon, Pencil, Plus, Printer, Trash2, X } from "lucide-react";
 import { api } from "../api";
 import type { ClinicaConfig, Consulta, EstadoTratamiento, PacientePerfil as Perfil, Tratamiento } from "../types";
 import { Button, Card, Input, Label, Modal, Select } from "../components/ui";
-import { fechaHoyInput, formatFecha, formatMoneda } from "../utils/format";
+import { estadoCitaClass, estadoCitaLabel, fechaHoyInput, formatFecha, formatFechaHora, formatMoneda } from "../utils/format";
 import { fileToBase64 } from "../utils/files";
 import FichaClinica from "../components/FichaClinica";
 import { descargarFichaClinicaPdf } from "../utils/pdf/fichaClinicaPdf";
-import { descargarOrdenLabPdf, descargarRecetaPdf } from "../utils/pdf/clinicaPdf";
+import { descargarCitaPacientePdf, descargarCitasPacientePdf, descargarOrdenLabPdf, descargarRecetaPdf } from "../utils/pdf/clinicaPdf";
 
 const TABS = [
+  { id: "resumen", label: "Resumen" },
   { id: "historia", label: "Historia clínica" },
   { id: "tratamientos", label: "Tratamientos" },
   { id: "estudios", label: "Estudios" },
@@ -29,7 +30,7 @@ export default function PacientePerfilPage() {
   const [cfg, setCfg] = useState<ClinicaConfig | null>(null);
   const [medicos, setMedicos] = useState<{ id: number; nombre: string }[]>([]);
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<TabId>("historia");
+  const [tab, setTab] = useState<TabId>("resumen");
   const [modal, setModal] = useState<string | null>(null);
   const [consultaEdit, setConsultaEdit] = useState<Consulta | null>(null);
   const [tratamientoEdit, setTratamientoEdit] = useState<Tratamiento | null>(null);
@@ -99,6 +100,10 @@ export default function PacientePerfilPage() {
         <div className="flex-1 min-w-[200px]">
           <h1 className="text-2xl font-bold text-slate-900">{perfil.nombre}</h1>
           <p className="text-sm text-slate-500">DPI {perfil.dpi} · {perfil.telefono}</p>
+          <label className="mt-2 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-primary-100 bg-primary-50 px-3 py-1.5 text-sm font-medium text-primary-700 hover:bg-primary-100">
+            <FileUp className="h-4 w-4" /> Cambiar fotografía del paciente
+            <input type="file" accept="image/*" className="hidden" onChange={onFoto} />
+          </label>
           {perfil.alergias ? (
             <p className="mt-2 rounded-lg bg-rose-50 px-3 py-1 text-sm text-rose-700">Alergias: {perfil.alergias}</p>
           ) : null}
@@ -138,6 +143,7 @@ export default function PacientePerfilPage() {
         ))}
       </div>
 
+      {tab === "resumen" && <ResumenTab perfil={perfil} cfg={cfg} />}
       {tab === "historia" && (
         <HistoriaTab
           perfil={perfil}
@@ -213,6 +219,156 @@ export default function PacientePerfilPage() {
   );
 }
 
+function ResumenTab({ perfil, cfg }: { perfil: Perfil; cfg: ClinicaConfig | null }) {
+  const tratamientosActivos = perfil.tratamientos.filter((t) => t.estado === "activo").length;
+  const proximasCitas = perfil.citas.filter((c) => c.estado !== "cancelada" && new Date(c.fecha_hora) >= new Date()).length;
+
+  async function descargarTodasLasCitas() {
+    if (!cfg) return;
+    try {
+      await descargarCitasPacientePdf({
+        cfg,
+        paciente: perfil as unknown as Record<string, string | number | null | undefined> & { id: number; foto_url?: string | null },
+        citas: perfil.citas
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo generar el PDF");
+    }
+  }
+
+  async function descargarUnaCita(citaId: number) {
+    if (!cfg) return;
+    const cita = perfil.citas.find((c) => c.id === citaId);
+    if (!cita) return;
+    try {
+      await descargarCitaPacientePdf({
+        cfg,
+        paciente: perfil as unknown as Record<string, string | number | null | undefined> & { id: number; foto_url?: string | null },
+        cita
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo generar el PDF");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Citas registradas</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{perfil.citas.length}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Próximas citas</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{proximasCitas}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tratamientos</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{perfil.tratamientos.length}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tratamientos activos</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{tratamientosActivos}</p>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-slate-900">Historial completo de citas</h3>
+              <p className="text-sm text-slate-500">Todas las citas agendadas para este paciente.</p>
+            </div>
+            {cfg ? (
+              <Button variant="secondary" onClick={descargarTodasLasCitas}>
+                <Download className="h-4 w-4" /> PDF completo
+              </Button>
+            ) : null}
+          </div>
+          {perfil.citas.length === 0 ? (
+            <p className="text-sm text-slate-500">No hay citas registradas.</p>
+          ) : (
+            <div className="space-y-3">
+              {perfil.citas.map((c) => (
+                <div key={c.id} className="rounded-xl border border-slate-100 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900">{formatFechaHora(c.fecha_hora)}</p>
+                      <p className="text-sm text-slate-600">{c.motivo || "Sin motivo especificado"}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${estadoCitaClass(c.estado)}`}>
+                        {estadoCitaLabel(c.estado)}
+                      </span>
+                      {cfg ? (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-50"
+                          onClick={() => descargarUnaCita(c.id)}
+                        >
+                          <Download className="h-3.5 w-3.5" /> PDF
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">
+                    {c.medico_nombre ? <span>Médico: {c.medico_nombre}</span> : <span>Sin médico asignado</span>}
+                    {c.notas ? <p className="mt-1 whitespace-pre-wrap text-slate-600">{c.notas}</p> : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <Card>
+          <div className="mb-4">
+            <h3 className="font-semibold text-slate-900">Historial completo de tratamientos</h3>
+            <p className="text-sm text-slate-500">Tratamientos activos, completados o suspendidos.</p>
+          </div>
+          {perfil.tratamientos.length === 0 ? (
+            <p className="text-sm text-slate-500">No hay tratamientos registrados.</p>
+          ) : (
+            <div className="space-y-3">
+              {perfil.tratamientos.map((t) => (
+                <div key={t.id} className="rounded-xl border border-slate-100 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-slate-900">{t.nombre}</p>
+                      <p className="text-xs text-slate-500">
+                        {formatFecha(t.fecha_inicio)}
+                        {t.fecha_fin ? ` - ${formatFecha(t.fecha_fin)}` : ""}
+                        {t.medico_nombre ? ` · ${t.medico_nombre}` : ""}
+                      </p>
+                    </div>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tratamientoEstadoClass(t.estado)}`}>
+                      {tratamientoEstadoLabel(t.estado)}
+                    </span>
+                  </div>
+                  {t.descripcion ? <p className="mt-2 text-sm text-slate-600">{t.descripcion}</p> : null}
+                  {t.progreso_notas ? <p className="mt-1 whitespace-pre-wrap text-sm italic text-slate-500">{t.progreso_notas}</p> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function tratamientoEstadoLabel(estado: EstadoTratamiento) {
+  if (estado === "activo") return "Activo";
+  if (estado === "completado") return "Completado";
+  return "Suspendido";
+}
+
+function tratamientoEstadoClass(estado: EstadoTratamiento) {
+  if (estado === "activo") return "bg-emerald-50 text-emerald-700";
+  if (estado === "completado") return "bg-slate-100 text-slate-600";
+  return "bg-amber-50 text-amber-700";
+}
+
 function HistoriaTab({
   perfil,
   cfg,
@@ -227,6 +383,8 @@ function HistoriaTab({
   onOpen: () => void;
   onEditConsulta: (c: Consulta) => void;
 }) {
+  const fotosSeguimiento = perfil.consultas.filter((c) => c.foto_seguimiento_url).slice().reverse();
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -247,6 +405,55 @@ function HistoriaTab({
       <FichaClinica cfg={cfg} paciente={perfil} consultas={perfil.consultas} />
 
       <Card className="print:hidden">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="flex items-center gap-2 font-semibold">
+              <ImageIcon className="h-4 w-4 text-primary-600" /> Evolución fotográfica
+            </h3>
+            <p className="text-sm text-slate-500">Una foto por consulta para comparar el avance del paciente.</p>
+          </div>
+        </div>
+        {fotosSeguimiento.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            Aún no hay fotos de seguimiento. Puede agregarlas al crear o editar una atención clínica.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {fotosSeguimiento.map((c, index) => {
+              const etiqueta =
+                fotosSeguimiento.length === 1
+                  ? "Registro inicial"
+                  : index === 0
+                    ? "Antes"
+                    : index === fotosSeguimiento.length - 1
+                      ? "Después"
+                      : "Seguimiento";
+              return (
+                <a
+                  key={c.id}
+                  href={c.foto_seguimiento_url || "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group overflow-hidden rounded-xl border border-slate-200 bg-white"
+                >
+                  <img
+                    src={c.foto_seguimiento_url || ""}
+                    alt={`Foto de seguimiento ${formatFecha(c.fecha)}`}
+                    className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
+                  />
+                  <div className="p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-primary-700">{etiqueta}</p>
+                    <p className="text-sm font-medium text-slate-900">{formatFecha(c.fecha)}</p>
+                    <p className="truncate text-xs text-slate-500">{c.motivo || "Atención clínica"}</p>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <Card className="print:hidden">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Acciones por registro</h3>
         {perfil.consultas.length === 0 ? (
           <p className="text-sm text-slate-500">Use «Nueva atención clínica» para el primer registro.</p>
@@ -260,6 +467,7 @@ function HistoriaTab({
                 <span>
                   {formatFecha(c.fecha)} — {c.motivo || "Atención general"}
                   {c.medico_nombre ? ` · ${c.medico_nombre}` : ""}
+                  {c.foto_seguimiento_url ? " · Con foto" : ""}
                 </span>
                 <div className="flex gap-1">
                   <button
@@ -440,28 +648,52 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        {perfil.estudios.map((e) => (
-          <div key={e.id} className="rounded-lg border p-3">
-            <p className="font-medium">{e.titulo}</p>
-            <p className="text-xs text-slate-500">{formatFecha(e.fecha_estudio || "")}</p>
-            <div className="mt-2 flex gap-2">
-              <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline">
-                Ver archivo
-              </a>
-              <button
-                type="button"
-                className="text-sm text-rose-600"
-                onClick={async () => {
-                  if (!confirm("¿Eliminar?")) return;
-                  await api.estudios.remove(e.id);
-                  onRefresh();
-                }}
-              >
-                Eliminar
-              </button>
+        {perfil.estudios.map((e) => {
+          const esImagen =
+            e.mime_type?.startsWith("image/") ||
+            /\.(png|jpe?g|webp|gif)$/i.test(e.nombre_original || e.archivo || "");
+          return (
+            <div key={e.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              {esImagen && e.url ? (
+                <a href={e.url} target="_blank" rel="noreferrer" className="block bg-slate-100">
+                  <img
+                    src={e.url}
+                    alt={e.titulo}
+                    className="h-48 w-full object-cover transition hover:scale-[1.01]"
+                    loading="lazy"
+                  />
+                </a>
+              ) : (
+                <div className="flex h-28 items-center justify-center bg-slate-50 text-slate-400">
+                  <FileText className="h-8 w-8" />
+                </div>
+              )}
+              <div className="p-3">
+                <p className="font-medium">{e.titulo}</p>
+                <p className="text-xs text-slate-500">
+                  {formatFecha(e.fecha_estudio || "")}
+                  {e.mime_type ? ` · ${esImagen ? "Imagen" : "Archivo"}` : ""}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline">
+                    {esImagen ? "Ver imagen" : "Ver archivo"}
+                  </a>
+                  <button
+                    type="button"
+                    className="text-sm text-rose-600"
+                    onClick={async () => {
+                      if (!confirm("¿Eliminar?")) return;
+                      await api.estudios.remove(e.id);
+                      onRefresh();
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Card>
   );
@@ -693,10 +925,40 @@ function ConsultaModal({
     tratamiento: consulta?.tratamiento || "",
     notas: consulta?.notas || ""
   });
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoDataBase64, setFotoDataBase64] = useState<string | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(consulta?.foto_seguimiento_url || null);
+  const [eliminarFoto, setEliminarFoto] = useState(false);
+
+  async function onFotoSeguimiento(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type && !file.type.startsWith("image/")) {
+      toast.error("Seleccione una imagen para la foto de seguimiento.");
+      return;
+    }
+    try {
+      const dataBase64 = await fileToBase64(file);
+      setFotoFile(file);
+      setFotoDataBase64(dataBase64);
+      setFotoPreview(dataBase64);
+      setEliminarFoto(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo leer la imagen");
+    }
+  }
+
+  function quitarFotoSeguimiento() {
+    setFotoFile(null);
+    setFotoDataBase64(null);
+    setFotoPreview(null);
+    setEliminarFoto(!!consulta?.foto_seguimiento_url);
+  }
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     try {
-      const body = {
+      const body: Record<string, unknown> = {
         medicoId: form.medicoId ? Number(form.medicoId) : null,
         fecha: form.fecha || fechaHoyInput(),
         motivo: form.motivo || null,
@@ -704,6 +966,12 @@ function ConsultaModal({
         tratamiento: form.tratamiento || null,
         notas: form.notas || null
       };
+      if (fotoFile && fotoDataBase64) {
+        body.fotoDataBase64 = fotoDataBase64;
+        body.fotoMimeType = fotoFile.type;
+        body.fotoNombreArchivo = fotoFile.name;
+      }
+      if (eliminarFoto) body.eliminarFotoSeguimiento = true;
       if (esEdicion && consulta) {
         await api.consultas.update(consulta.id, body);
         toast.success("Atención clínica actualizada");
@@ -783,6 +1051,39 @@ function ConsultaModal({
             onChange={(e) => setForm({ ...form, tratamiento: e.target.value })}
             placeholder="Medicación, estudios solicitados, recomendaciones…"
           />
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <Label>Foto de seguimiento</Label>
+              <p className="mt-1 text-xs text-slate-500">
+                Opcional. Guarde una imagen por consulta para comparar antes y después.
+              </p>
+            </div>
+            <label className="cursor-pointer">
+              <span className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-medium text-primary-700 ring-1 ring-primary-200 hover:bg-primary-50">
+                <Camera className="h-4 w-4" /> Seleccionar foto
+              </span>
+              <input type="file" accept="image/*" className="hidden" onChange={onFotoSeguimiento} />
+            </label>
+          </div>
+          {fotoPreview ? (
+            <div className="mt-3 flex flex-wrap items-start gap-3">
+              <img src={fotoPreview} alt="Foto de seguimiento" className="h-32 w-40 rounded-lg object-cover ring-1 ring-slate-200" />
+              <div className="min-w-0 flex-1 text-sm text-slate-600">
+                <p className="font-medium text-slate-800">
+                  {fotoFile?.name || consulta?.foto_seguimiento_nombre_original || "Foto registrada"}
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 inline-flex items-center gap-1 text-sm text-rose-600 hover:underline"
+                  onClick={quitarFotoSeguimiento}
+                >
+                  <X className="h-3.5 w-3.5" /> Quitar foto
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-4">
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -1073,7 +1374,7 @@ function PagoModal({ pacienteId, onClose, onSaved }: { pacienteId: number; onClo
     <Modal open title="Registrar pago" onClose={onClose}>
       <form className="space-y-3" onSubmit={submit}>
         <div><Label>Concepto *</Label><Input required value={form.concepto} onChange={(e) => setForm({ ...form, concepto: e.target.value })} /></div>
-        <div><Label>Monto (GTQ) *</Label><Input type="number" step="0.01" required value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} /></div>
+        <div><Label>Monto (MXN) *</Label><Input type="number" step="0.01" required value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} /></div>
         <div><Label>Fecha</Label><Input type="date" value={form.fecha} onChange={(e) => setForm({ ...form, fecha: e.target.value })} /></div>
         <div><Label>Método</Label><Select value={form.metodoPago} onChange={(e) => setForm({ ...form, metodoPago: e.target.value })}><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option><option value="transferencia">Transferencia</option></Select></div>
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button type="submit">Guardar</Button></div>

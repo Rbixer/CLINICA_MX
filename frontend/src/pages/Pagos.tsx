@@ -131,7 +131,7 @@ export default function Pagos() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Monto *</Label>
+              <Label>Monto (MXN) *</Label>
               <Input type="number" step="0.01" required value={form.monto} onChange={(e) => setForm({ ...form, monto: e.target.value })} />
             </div>
             <div>

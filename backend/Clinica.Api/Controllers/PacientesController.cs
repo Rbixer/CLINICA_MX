@@ -70,6 +70,11 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
                 diagnostico = c.Diagnostico,
                 tratamiento = c.Tratamiento,
                 notas = c.Notas,
+                foto_seguimiento = c.FotoSeguimiento,
+                foto_seguimiento_url = c.FotoSeguimiento != null ? files.PublicUrl(c.FotoSeguimiento) : null,
+                foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
+                foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
+                foto_seguimiento_tamano = c.FotoSeguimientoTamano,
                 medico_nombre = c.Medico?.Nombre
             })
         });
@@ -125,6 +130,11 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
                 diagnostico = c.Diagnostico,
                 tratamiento = c.Tratamiento,
                 notas = c.Notas,
+                foto_seguimiento = c.FotoSeguimiento,
+                foto_seguimiento_url = c.FotoSeguimiento != null ? files.PublicUrl(c.FotoSeguimiento) : null,
+                foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
+                foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
+                foto_seguimiento_tamano = c.FotoSeguimientoTamano,
                 medico_nombre = c.Medico?.Nombre
             }),
             tratamientos = tratamientos.Select(t => new

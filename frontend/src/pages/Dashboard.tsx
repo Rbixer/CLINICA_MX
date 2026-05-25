@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Calendar,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   ClipboardList,
   DollarSign,
   FileText,
@@ -25,7 +27,9 @@ import {
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import type { Cita, DashboardData } from "../types";
+import CalendarioMensual from "../components/agenda/CalendarioMensual";
 import { Card } from "../components/ui";
+import { addMonths, endOfMonth, fechaParte, startOfMonth, tituloMes } from "../utils/calendar";
 import {
   estadoCitaClass,
   estadoCitaLabel,
@@ -36,9 +40,13 @@ import {
 } from "../utils/format";
 
 export default function Dashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
   const hoyLabel = fechaHoyInput();
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [citasMes, setCitasMes] = useState<Cita[]>([]);
+  const [calendarioFecha, setCalendarioFecha] = useState(hoyLabel);
+  const [calendarioMes, setCalendarioMes] = useState(() => startOfMonth(hoyLabel));
+  const [loading, setLoading] = useState(true);
+  const [loadingCalendario, setLoadingCalendario] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -51,11 +59,39 @@ export default function Dashboard() {
     }
   }, []);
 
+  const loadCalendario = useCallback(async () => {
+    try {
+      setLoadingCalendario(true);
+      const citas = await api.citas.rango(startOfMonth(calendarioMes), endOfMonth(calendarioMes));
+      setCitasMes(citas);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error al cargar calendario");
+    } finally {
+      setLoadingCalendario(false);
+    }
+  }, [calendarioMes]);
+
   useEffect(() => {
     load();
     const t = setInterval(load, 60_000);
     return () => clearInterval(t);
   }, [load]);
+
+  useEffect(() => {
+    loadCalendario();
+  }, [loadCalendario]);
+
+  function seleccionarDiaCalendario(fecha: string) {
+    setCalendarioFecha(fecha);
+    const mesDia = startOfMonth(fecha);
+    if (mesDia !== calendarioMes) setCalendarioMes(mesDia);
+  }
+
+  function navegarCalendario(delta: number) {
+    const nuevoMes = addMonths(calendarioMes, delta);
+    setCalendarioMes(nuevoMes);
+    setCalendarioFecha(nuevoMes);
+  }
 
   const stats = [
     {
@@ -85,6 +121,9 @@ export default function Dashboard() {
   ];
 
   const citasHoy = data?.citas_hoy ?? [];
+  const citasDiaCalendario = citasMes
+    .filter((cita) => fechaParte(cita.fecha_hora) === calendarioFecha)
+    .sort((a, b) => a.fecha_hora.localeCompare(b.fecha_hora));
 
   return (
     <div>
@@ -118,6 +157,116 @@ export default function Dashboard() {
               </Card>
             ))}
           </div>
+
+          <Card className="mb-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Calendario de citas</h3>
+                <p className="text-sm capitalize text-slate-500">{tituloMes(calendarioMes)}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => loadCalendario()}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50"
+                >
+                  Actualizar
+                </button>
+                <div className="flex items-center rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    className="rounded-l-lg p-2 hover:bg-slate-50"
+                    onClick={() => navegarCalendario(-1)}
+                    aria-label="Mes anterior"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    onClick={() => seleccionarDiaCalendario(hoyLabel)}
+                  >
+                    Hoy
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-r-lg p-2 hover:bg-slate-50"
+                    onClick={() => navegarCalendario(1)}
+                    aria-label="Mes siguiente"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                <Link
+                  to="/citas"
+                  className="rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-700"
+                >
+                  Agenda completa
+                </Link>
+              </div>
+            </div>
+
+            {loadingCalendario ? (
+              <p className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                Cargando calendario…
+              </p>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(18rem,1fr)]">
+                <CalendarioMensual
+                  refFecha={calendarioMes}
+                  citas={citasMes}
+                  fechaSeleccionada={calendarioFecha}
+                  onSelectDia={seleccionarDiaCalendario}
+                  onSelectCita={(cita) => seleccionarDiaCalendario(fechaParte(cita.fecha_hora))}
+                />
+                <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Día seleccionado</p>
+                  <h4 className="mt-1 text-base font-semibold capitalize text-slate-900">
+                    {new Date(`${calendarioFecha}T12:00:00`).toLocaleDateString("es-GT", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long"
+                    })}
+                  </h4>
+                  <div className="mt-4 space-y-2">
+                    {citasDiaCalendario.length ? (
+                      citasDiaCalendario.map((cita) => (
+                        <div key={cita.id} className="rounded-lg bg-white p-3 shadow-sm ring-1 ring-slate-100">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">
+                                {formatHora(cita.fecha_hora)} · {cita.paciente_nombre || "Sin paciente"}
+                              </p>
+                              <p className="text-xs text-slate-500">{cita.medico_nombre || "Sin médico"}</p>
+                            </div>
+                            <span
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${estadoCitaClass(
+                                cita.estado
+                              )}`}
+                            >
+                              {estadoCitaLabel(cita.estado)}
+                            </span>
+                          </div>
+                          {cita.paciente_id ? (
+                            <Link
+                              to={`/pacientes/${cita.paciente_id}`}
+                              className="mt-2 inline-block text-xs font-medium text-primary-600 hover:underline"
+                            >
+                              Ver expediente
+                            </Link>
+                          ) : null}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="rounded-lg bg-white px-3 py-8 text-center text-sm text-slate-500">
+                        No hay citas en esta fecha.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
 
           <Card className="mb-6 !p-0 overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-4">

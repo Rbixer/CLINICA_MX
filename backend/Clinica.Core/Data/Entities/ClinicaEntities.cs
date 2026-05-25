@@ -115,6 +115,13 @@ public class Consulta
     public string? Diagnostico { get; set; }
     public string? Tratamiento { get; set; }
     public string? Notas { get; set; }
+    [MaxLength(500)]
+    public string? FotoSeguimiento { get; set; }
+    [MaxLength(300)]
+    public string? FotoSeguimientoNombreOriginal { get; set; }
+    [MaxLength(80)]
+    public string? FotoSeguimientoMimeType { get; set; }
+    public long? FotoSeguimientoTamano { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Paciente Paciente { get; set; } = null!;
     public Medico? Medico { get; set; }
