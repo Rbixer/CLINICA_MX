@@ -44,10 +44,45 @@ function bloqueCampo(doc: jsPDF, label: string, value: string, x: number, y: num
   return y + h + 5;
 }
 
+function fotoPlaceholder(doc: jsPDF, label: string, x: number, y: number, width: number, height: number) {
+  doc.setDrawColor(203, 213, 225);
+  doc.setFillColor(248, 250, 252);
+  doc.rect(x, y, width, height, "FD");
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Sin foto ${label.toLowerCase()}`, x + width / 2, y + height / 2, { align: "center" });
+}
+
+function dibujarFotoEvolucion(
+  doc: jsPDF,
+  label: string,
+  imageData: string | null,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.setTextColor(100, 116, 139);
+  doc.text(label.toUpperCase(), x, y);
+
+  if (imageData) {
+    doc.setDrawColor(203, 213, 225);
+    doc.rect(x, y + 2, width, height);
+    doc.addImage(imageData, "JPEG", x + 1, y + 3, width - 2, height - 2);
+    return;
+  }
+
+  fotoPlaceholder(doc, label, x, y + 2, width, height);
+}
+
 export async function descargarFichaClinicaPdf({
   cfg,
   paciente,
-  consultas
+  consultas,
+  estudios = []
 }: {
   cfg: ClinicaConfig;
   paciente: Record<string, string | number | null | undefined> & { id?: number; foto_url?: string | null };
@@ -58,6 +93,15 @@ export async function descargarFichaClinicaPdf({
     tratamiento?: string | null;
     notas?: string | null;
     medico_nombre?: string;
+  }>;
+  estudios?: Array<{
+    id: number;
+    titulo: string;
+    descripcion?: string | null;
+    fecha_estudio?: string | null;
+    cita_id?: number | null;
+    foto_antes_url?: string | null;
+    foto_despues_url?: string | null;
   }>;
 }) {
   const doc = new jsPDF();
@@ -163,6 +207,55 @@ export async function descargarFichaClinicaPdf({
       doc.text(`Médico tratante: ${texto(c.medico_nombre)}`, 14, y);
       y += 10;
     });
+  }
+
+  const estudiosConEvolucion = estudios.filter((e) => e.foto_antes_url || e.foto_despues_url);
+  if (estudiosConEvolucion.length) {
+    if (y > 235) {
+      doc.addPage();
+      y = 20;
+    }
+    y = tituloSeccion(doc, "IV. Evolución fotográfica desde estudios", y);
+
+    for (const [idx, e] of estudiosConEvolucion.entries()) {
+      if (y > 205) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.setDrawColor(...AZUL);
+      doc.setFillColor(248, 250, 252);
+      doc.rect(14, y, 182, 7, "FD");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.setTextColor(...AZUL);
+      doc.text(
+        `EVOLUCIÓN DE RECUPERACIÓN No. ${estudiosConEvolucion.length - idx}  —  ${formatFecha(
+          e.fecha_estudio || ""
+        )}`,
+        16,
+        y + 5
+      );
+      y += 10;
+
+      y = bloqueCampo(doc, "Título", texto(e.titulo), 14, y, 182);
+      if (e.descripcion) y = bloqueCampo(doc, "Descripción", texto(e.descripcion), 14, y, 182);
+      if (e.cita_id) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(80, 80, 80);
+        doc.text(`Cita relacionada: #${e.cita_id}`, 14, y);
+        y += 7;
+      }
+
+      const [fotoAntes, fotoDespues] = await Promise.all([
+        imageUrlToJpegDataUrl(e.foto_antes_url || ""),
+        imageUrlToJpegDataUrl(e.foto_despues_url || "")
+      ]);
+      dibujarFotoEvolucion(doc, "Antes", fotoAntes, 14, y, 88, 50);
+      dibujarFotoEvolucion(doc, "Después", fotoDespues, 108, y, 88, 50);
+      y += 60;
+    }
   }
 
   if (y > 255) {

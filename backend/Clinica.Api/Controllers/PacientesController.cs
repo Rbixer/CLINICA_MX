@@ -75,6 +75,16 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
                 foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
                 foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
                 foto_seguimiento_tamano = c.FotoSeguimientoTamano,
+                foto_antes = c.FotoAntes,
+                foto_antes_url = c.FotoAntes != null ? files.PublicUrl(c.FotoAntes) : null,
+                foto_antes_nombre_original = c.FotoAntesNombreOriginal,
+                foto_antes_mime_type = c.FotoAntesMimeType,
+                foto_antes_tamano = c.FotoAntesTamano,
+                foto_despues = c.FotoDespues,
+                foto_despues_url = c.FotoDespues != null ? files.PublicUrl(c.FotoDespues) : null,
+                foto_despues_nombre_original = c.FotoDespuesNombreOriginal,
+                foto_despues_mime_type = c.FotoDespuesMimeType,
+                foto_despues_tamano = c.FotoDespuesTamano,
                 medico_nombre = c.Medico?.Nombre
             })
         });
@@ -135,6 +145,16 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
                 foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
                 foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
                 foto_seguimiento_tamano = c.FotoSeguimientoTamano,
+                foto_antes = c.FotoAntes,
+                foto_antes_url = c.FotoAntes != null ? files.PublicUrl(c.FotoAntes) : null,
+                foto_antes_nombre_original = c.FotoAntesNombreOriginal,
+                foto_antes_mime_type = c.FotoAntesMimeType,
+                foto_antes_tamano = c.FotoAntesTamano,
+                foto_despues = c.FotoDespues,
+                foto_despues_url = c.FotoDespues != null ? files.PublicUrl(c.FotoDespues) : null,
+                foto_despues_nombre_original = c.FotoDespuesNombreOriginal,
+                foto_despues_mime_type = c.FotoDespuesMimeType,
+                foto_despues_tamano = c.FotoDespuesTamano,
                 medico_nombre = c.Medico?.Nombre
             }),
             tratamientos = tratamientos.Select(t => new
@@ -297,15 +317,28 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
     public async Task<IActionResult> UploadEstudio(string id, [FromBody] EstudioRequest body)
     {
         var pid = ClinicaHelpers.ParseId(id);
-        if (pid == null || string.IsNullOrWhiteSpace(body.Titulo) || string.IsNullOrWhiteSpace(body.DataBase64))
-            return BadRequest(new { message = "Título y archivo son obligatorios." });
+        if (pid == null || string.IsNullOrWhiteSpace(body.Titulo))
+            return BadRequest(new { message = "Título obligatorio." });
+        if (string.IsNullOrWhiteSpace(body.DataBase64) &&
+            string.IsNullOrWhiteSpace(body.FotoAntesDataBase64) &&
+            string.IsNullOrWhiteSpace(body.FotoDespuesDataBase64))
+            return BadRequest(new { message = "Agregue un archivo o fotografías de antes/después." });
 
         try
         {
-            var saved = files.SaveBase64($"estudios/{pid}", body.DataBase64!, body.MimeType, body.NombreArchivo);
+            if (body.CitaId > 0)
+            {
+                var citaValida = await db.Citas.AnyAsync(c => c.Id == body.CitaId && c.PacienteId == pid);
+                if (!citaValida) return BadRequest(new { message = "La cita seleccionada no pertenece a este paciente." });
+            }
+
+            var saved = !string.IsNullOrWhiteSpace(body.DataBase64)
+                ? files.SaveBase64($"estudios/{pid}", body.DataBase64!, body.MimeType, body.NombreArchivo)
+                : GuardarFotoEstudio(pid.Value, "principal", body.FotoAntesDataBase64 ?? body.FotoDespuesDataBase64!, body.FotoAntesMimeType ?? body.FotoDespuesMimeType, body.FotoAntesNombreArchivo ?? body.FotoDespuesNombreArchivo);
             var e = new EstudioClinico
             {
                 PacienteId = pid.Value,
+                CitaId = body.CitaId > 0 ? body.CitaId : null,
                 Titulo = body.Titulo!.Trim(),
                 Descripcion = body.Descripcion?.Trim(),
                 Archivo = saved.Relative,
@@ -314,6 +347,22 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
                 Tamano = saved.Size,
                 FechaEstudio = body.FechaEstudio
             };
+            if (!string.IsNullOrWhiteSpace(body.FotoAntesDataBase64))
+            {
+                var fotoAntes = GuardarFotoEstudio(pid.Value, "antes", body.FotoAntesDataBase64!, body.FotoAntesMimeType, body.FotoAntesNombreArchivo);
+                e.FotoAntes = fotoAntes.Relative;
+                e.FotoAntesNombreOriginal = body.FotoAntesNombreArchivo ?? fotoAntes.Name;
+                e.FotoAntesMimeType = fotoAntes.Mime;
+                e.FotoAntesTamano = fotoAntes.Size;
+            }
+            if (!string.IsNullOrWhiteSpace(body.FotoDespuesDataBase64))
+            {
+                var fotoDespues = GuardarFotoEstudio(pid.Value, "despues", body.FotoDespuesDataBase64!, body.FotoDespuesMimeType, body.FotoDespuesNombreArchivo);
+                e.FotoDespues = fotoDespues.Relative;
+                e.FotoDespuesNombreOriginal = body.FotoDespuesNombreArchivo ?? fotoDespues.Name;
+                e.FotoDespuesMimeType = fotoDespues.Mime;
+                e.FotoDespuesTamano = fotoDespues.Size;
+            }
             db.EstudiosClinicos.Add(e);
             await db.SaveChangesAsync();
             return StatusCode(201, ClinicaHelpers.MapEstudio(e, files));
@@ -322,6 +371,13 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    private FileStorageService.SavedFile GuardarFotoEstudio(int pacienteId, string tipo, string dataBase64, string? mimeType, string? nombreArchivo)
+    {
+        if (!string.IsNullOrWhiteSpace(mimeType) && !mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Las fotografías de evolución deben ser imágenes.");
+        return files.SaveBase64($"estudios/{pacienteId}/evolucion/{tipo}", dataBase64, mimeType, nombreArchivo, maxMb: 8);
     }
 
     public class PacienteRequest
@@ -349,8 +405,15 @@ public class PacientesController(ClinicaDbContext db, FileStorageService files) 
         public string? Titulo { get; set; }
         public string? Descripcion { get; set; }
         public string? FechaEstudio { get; set; }
+        public int? CitaId { get; set; }
         public string? DataBase64 { get; set; }
         public string? MimeType { get; set; }
         public string? NombreArchivo { get; set; }
+        public string? FotoAntesDataBase64 { get; set; }
+        public string? FotoAntesMimeType { get; set; }
+        public string? FotoAntesNombreArchivo { get; set; }
+        public string? FotoDespuesDataBase64 { get; set; }
+        public string? FotoDespuesMimeType { get; set; }
+        public string? FotoDespuesNombreArchivo { get; set; }
     }
 }

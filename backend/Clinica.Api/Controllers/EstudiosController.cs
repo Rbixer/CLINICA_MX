@@ -19,6 +19,8 @@ public class EstudiosController(ClinicaDbContext db, FileStorageService files) :
         if (e != null)
         {
             files.DeleteIfExists(e.Archivo);
+            files.DeleteIfExists(e.FotoAntes);
+            files.DeleteIfExists(e.FotoDespues);
             db.EstudiosClinicos.Remove(e);
             await db.SaveChangesAsync();
         }

@@ -73,6 +73,7 @@ public static class ClinicaHelpers
     {
         id = e.Id,
         paciente_id = e.PacienteId,
+        cita_id = e.CitaId,
         titulo = e.Titulo,
         descripcion = e.Descripcion,
         archivo = e.Archivo,
@@ -81,6 +82,16 @@ public static class ClinicaHelpers
         tamano = e.Tamano,
         fecha_estudio = e.FechaEstudio,
         created_at = e.CreatedAt,
+        foto_antes = e.FotoAntes,
+        foto_antes_url = e.FotoAntes != null ? fs.PublicUrl(e.FotoAntes) : null,
+        foto_antes_nombre_original = e.FotoAntesNombreOriginal,
+        foto_antes_mime_type = e.FotoAntesMimeType,
+        foto_antes_tamano = e.FotoAntesTamano,
+        foto_despues = e.FotoDespues,
+        foto_despues_url = e.FotoDespues != null ? fs.PublicUrl(e.FotoDespues) : null,
+        foto_despues_nombre_original = e.FotoDespuesNombreOriginal,
+        foto_despues_mime_type = e.FotoDespuesMimeType,
+        foto_despues_tamano = e.FotoDespuesTamano,
         url = fs.PublicUrl(e.Archivo)
     };
 }

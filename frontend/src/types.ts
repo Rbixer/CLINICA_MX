@@ -65,6 +65,16 @@ export interface Consulta {
   foto_seguimiento_nombre_original?: string | null;
   foto_seguimiento_mime_type?: string | null;
   foto_seguimiento_tamano?: number | null;
+  foto_antes: string | null;
+  foto_antes_url?: string | null;
+  foto_antes_nombre_original?: string | null;
+  foto_antes_mime_type?: string | null;
+  foto_antes_tamano?: number | null;
+  foto_despues: string | null;
+  foto_despues_url?: string | null;
+  foto_despues_nombre_original?: string | null;
+  foto_despues_mime_type?: string | null;
+  foto_despues_tamano?: number | null;
   medico_nombre?: string;
 }
 
@@ -84,12 +94,23 @@ export interface Tratamiento {
 export interface EstudioClinico {
   id: number;
   paciente_id: number;
+  cita_id?: number | null;
   titulo: string;
   descripcion: string | null;
   archivo: string;
   nombre_original: string | null;
   mime_type: string | null;
   fecha_estudio: string | null;
+  foto_antes?: string | null;
+  foto_antes_url?: string | null;
+  foto_antes_nombre_original?: string | null;
+  foto_antes_mime_type?: string | null;
+  foto_antes_tamano?: number | null;
+  foto_despues?: string | null;
+  foto_despues_url?: string | null;
+  foto_despues_nombre_original?: string | null;
+  foto_despues_mime_type?: string | null;
+  foto_despues_tamano?: number | null;
   url?: string;
 }
 

@@ -1,4 +1,4 @@
-import type { ClinicaConfig, Consulta, Paciente } from "../types";
+import type { ClinicaConfig, Consulta, EstudioClinico, Paciente } from "../types";
 import { calcularEdad, formatFechaLarga } from "../utils/edad";
 import { formatFecha } from "../utils/format";
 
@@ -20,14 +20,17 @@ type PacienteFicha = Pick<
 export default function FichaClinica({
   cfg,
   paciente,
-  consultas
+  consultas,
+  estudios = []
 }: {
   cfg: ClinicaConfig | null;
   paciente: PacienteFicha;
   consultas: Consulta[];
+  estudios?: EstudioClinico[];
 }) {
   const folio = `EXP-${String(paciente.id).padStart(5, "0")}-${new Date().getFullYear()}`;
   const emitido = formatFechaLarga(new Date().toISOString().slice(0, 10));
+  const estudiosConEvolucion = estudios.filter((e) => e.foto_antes_url || e.foto_despues_url);
 
   return (
     <article
@@ -108,7 +111,7 @@ export default function FichaClinica({
         </div>
       </section>
 
-      <section className="px-6 py-4">
+      <section className="border-b border-slate-200 px-6 py-4">
         <h4 className="ficha-seccion-titulo">III. Registro de atenciones clínicas</h4>
         {consultas.length === 0 ? (
           <p className="mt-4 text-center text-sm italic text-slate-500">
@@ -129,7 +132,17 @@ export default function FichaClinica({
                   <CampoBloque label="Examen físico y observaciones" value={c.notas} />
                   <CampoBloque label="Diagnóstico / impresión clínica" value={c.diagnostico} />
                   <CampoBloque label="Plan de tratamiento e indicaciones" value={c.tratamiento} />
-                  {c.foto_seguimiento_url ? (
+                  {c.foto_antes_url || c.foto_despues_url ? (
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                        Evolución fotográfica
+                      </p>
+                      <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                        <FotoConsulta label="Antes" url={c.foto_antes_url} fecha={c.fecha} />
+                        <FotoConsulta label="Después" url={c.foto_despues_url} fecha={c.fecha} />
+                      </div>
+                    </div>
+                  ) : c.foto_seguimiento_url ? (
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
                         Foto de seguimiento
@@ -154,6 +167,37 @@ export default function FichaClinica({
         )}
       </section>
 
+      {estudiosConEvolucion.length ? (
+        <section className="px-6 py-4">
+          <h4 className="ficha-seccion-titulo">IV. Evolución fotográfica desde estudios</h4>
+          <div className="mt-4 space-y-5">
+            {estudiosConEvolucion.map((e, i) => (
+              <div key={e.id} className="rounded border border-slate-300 bg-slate-50/30 p-4 print:break-inside-avoid">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-800">
+                      Evolución de recuperación No. {estudiosConEvolucion.length - i}
+                    </p>
+                    <p className="text-sm font-semibold text-slate-900">{e.titulo}</p>
+                  </div>
+                  <p className="text-xs text-slate-600">{formatFecha(e.fecha_estudio || "")}</p>
+                </div>
+                {e.descripcion ? <p className="mb-3 whitespace-pre-wrap text-sm text-slate-700">{e.descripcion}</p> : null}
+                {e.cita_id ? (
+                  <p className="mb-3 text-xs text-slate-600">
+                    <span className="font-semibold uppercase">Cita relacionada:</span> #{e.cita_id}
+                  </p>
+                ) : null}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <FotoConsulta label="Antes" url={e.foto_antes_url} fecha={e.fecha_estudio || ""} />
+                  <FotoConsulta label="Después" url={e.foto_despues_url} fecha={e.fecha_estudio || ""} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <footer className="border-t-2 border-slate-800 px-6 py-5">
         <p className="text-center text-[10px] leading-relaxed text-slate-500">
           Este documento forma parte del expediente clínico del paciente. La información contenida es de carácter
@@ -172,6 +216,27 @@ export default function FichaClinica({
         </div>
       </footer>
     </article>
+  );
+}
+
+function FotoConsulta({ label, url, fecha }: { label: string; url?: string | null; fecha: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-40 items-center justify-center rounded border border-dashed border-slate-200 text-xs text-slate-400">
+        Sin foto {label.toLowerCase()}
+      </div>
+    );
+  }
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="block">
+      <img
+        src={url}
+        alt={`Foto ${label.toLowerCase()} ${formatFecha(fecha)}`}
+        className="max-h-64 w-full rounded border border-slate-200 object-contain"
+      />
+      <p className="mt-1 text-center text-xs font-semibold text-slate-600">{label}</p>
+    </a>
   );
 }
 

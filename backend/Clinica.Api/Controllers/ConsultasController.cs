@@ -49,6 +49,22 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
                 c.FotoSeguimientoMimeType = saved.Mime;
                 c.FotoSeguimientoTamano = saved.Size;
             }
+            if (!string.IsNullOrWhiteSpace(body.FotoAntesDataBase64))
+            {
+                var saved = GuardarFotoConsulta(body.PacienteId.Value, "antes", body.FotoAntesDataBase64!, body.FotoAntesMimeType, body.FotoAntesNombreArchivo);
+                c.FotoAntes = saved.Relative;
+                c.FotoAntesNombreOriginal = body.FotoAntesNombreArchivo ?? saved.Name;
+                c.FotoAntesMimeType = saved.Mime;
+                c.FotoAntesTamano = saved.Size;
+            }
+            if (!string.IsNullOrWhiteSpace(body.FotoDespuesDataBase64))
+            {
+                var saved = GuardarFotoConsulta(body.PacienteId.Value, "despues", body.FotoDespuesDataBase64!, body.FotoDespuesMimeType, body.FotoDespuesNombreArchivo);
+                c.FotoDespues = saved.Relative;
+                c.FotoDespuesNombreOriginal = body.FotoDespuesNombreArchivo ?? saved.Name;
+                c.FotoDespuesMimeType = saved.Mime;
+                c.FotoDespuesTamano = saved.Size;
+            }
 
             db.Consultas.Add(c);
             if (body.CitaId > 0)
@@ -95,6 +111,34 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
                 c.FotoSeguimientoMimeType = saved.Mime;
                 c.FotoSeguimientoTamano = saved.Size;
             }
+            if (body.EliminarFotoAntes == true)
+            {
+                files.DeleteIfExists(c.FotoAntes);
+                LimpiarFotoAntes(c);
+            }
+            if (!string.IsNullOrWhiteSpace(body.FotoAntesDataBase64))
+            {
+                var saved = GuardarFotoConsulta(c.PacienteId, "antes", body.FotoAntesDataBase64!, body.FotoAntesMimeType, body.FotoAntesNombreArchivo);
+                files.DeleteIfExists(c.FotoAntes);
+                c.FotoAntes = saved.Relative;
+                c.FotoAntesNombreOriginal = body.FotoAntesNombreArchivo ?? saved.Name;
+                c.FotoAntesMimeType = saved.Mime;
+                c.FotoAntesTamano = saved.Size;
+            }
+            if (body.EliminarFotoDespues == true)
+            {
+                files.DeleteIfExists(c.FotoDespues);
+                LimpiarFotoDespues(c);
+            }
+            if (!string.IsNullOrWhiteSpace(body.FotoDespuesDataBase64))
+            {
+                var saved = GuardarFotoConsulta(c.PacienteId, "despues", body.FotoDespuesDataBase64!, body.FotoDespuesMimeType, body.FotoDespuesNombreArchivo);
+                files.DeleteIfExists(c.FotoDespues);
+                c.FotoDespues = saved.Relative;
+                c.FotoDespuesNombreOriginal = body.FotoDespuesNombreArchivo ?? saved.Name;
+                c.FotoDespuesMimeType = saved.Mime;
+                c.FotoDespuesTamano = saved.Size;
+            }
         }
         catch (Exception ex)
         {
@@ -114,6 +158,8 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
         if (c != null)
         {
             files.DeleteIfExists(c.FotoSeguimiento);
+            files.DeleteIfExists(c.FotoAntes);
+            files.DeleteIfExists(c.FotoDespues);
             db.Consultas.Remove(c);
             await db.SaveChangesAsync();
         }
@@ -136,6 +182,16 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
         foto_seguimiento_nombre_original = c.FotoSeguimientoNombreOriginal,
         foto_seguimiento_mime_type = c.FotoSeguimientoMimeType,
         foto_seguimiento_tamano = c.FotoSeguimientoTamano,
+        foto_antes = c.FotoAntes,
+        foto_antes_url = c.FotoAntes != null ? files.PublicUrl(c.FotoAntes) : null,
+        foto_antes_nombre_original = c.FotoAntesNombreOriginal,
+        foto_antes_mime_type = c.FotoAntesMimeType,
+        foto_antes_tamano = c.FotoAntesTamano,
+        foto_despues = c.FotoDespues,
+        foto_despues_url = c.FotoDespues != null ? files.PublicUrl(c.FotoDespues) : null,
+        foto_despues_nombre_original = c.FotoDespuesNombreOriginal,
+        foto_despues_mime_type = c.FotoDespuesMimeType,
+        foto_despues_tamano = c.FotoDespuesTamano,
         paciente_nombre = c.Paciente?.Nombre,
         medico_nombre = c.Medico?.Nombre
     };
@@ -147,12 +203,35 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
         return files.SaveBase64($"consultas/{pacienteId}", dataBase64, mimeType, nombreArchivo, maxMb: 8);
     }
 
+    private FileStorageService.SavedFile GuardarFotoConsulta(int pacienteId, string tipo, string dataBase64, string? mimeType, string? nombreArchivo)
+    {
+        if (!string.IsNullOrWhiteSpace(mimeType) && !mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Las fotos de evolución deben ser imágenes.");
+        return files.SaveBase64($"consultas/{pacienteId}/{tipo}", dataBase64, mimeType, nombreArchivo, maxMb: 8);
+    }
+
     private static void LimpiarFotoSeguimiento(Consulta c)
     {
         c.FotoSeguimiento = null;
         c.FotoSeguimientoNombreOriginal = null;
         c.FotoSeguimientoMimeType = null;
         c.FotoSeguimientoTamano = null;
+    }
+
+    private static void LimpiarFotoAntes(Consulta c)
+    {
+        c.FotoAntes = null;
+        c.FotoAntesNombreOriginal = null;
+        c.FotoAntesMimeType = null;
+        c.FotoAntesTamano = null;
+    }
+
+    private static void LimpiarFotoDespues(Consulta c)
+    {
+        c.FotoDespues = null;
+        c.FotoDespuesNombreOriginal = null;
+        c.FotoDespuesMimeType = null;
+        c.FotoDespuesTamano = null;
     }
 
     public class ConsultaRequest
@@ -168,6 +247,12 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
         public string? FotoDataBase64 { get; set; }
         public string? FotoMimeType { get; set; }
         public string? FotoNombreArchivo { get; set; }
+        public string? FotoAntesDataBase64 { get; set; }
+        public string? FotoAntesMimeType { get; set; }
+        public string? FotoAntesNombreArchivo { get; set; }
+        public string? FotoDespuesDataBase64 { get; set; }
+        public string? FotoDespuesMimeType { get; set; }
+        public string? FotoDespuesNombreArchivo { get; set; }
     }
 
     public class ConsultaPatchRequest
@@ -181,5 +266,13 @@ public class ConsultasController(ClinicaDbContext db, FileStorageService files) 
         public string? FotoMimeType { get; set; }
         public string? FotoNombreArchivo { get; set; }
         public bool? EliminarFotoSeguimiento { get; set; }
+        public string? FotoAntesDataBase64 { get; set; }
+        public string? FotoAntesMimeType { get; set; }
+        public string? FotoAntesNombreArchivo { get; set; }
+        public bool? EliminarFotoAntes { get; set; }
+        public string? FotoDespuesDataBase64 { get; set; }
+        public string? FotoDespuesMimeType { get; set; }
+        public string? FotoDespuesNombreArchivo { get; set; }
+        public bool? EliminarFotoDespues { get; set; }
     }
 }

@@ -122,6 +122,20 @@ public class Consulta
     [MaxLength(80)]
     public string? FotoSeguimientoMimeType { get; set; }
     public long? FotoSeguimientoTamano { get; set; }
+    [MaxLength(500)]
+    public string? FotoAntes { get; set; }
+    [MaxLength(300)]
+    public string? FotoAntesNombreOriginal { get; set; }
+    [MaxLength(80)]
+    public string? FotoAntesMimeType { get; set; }
+    public long? FotoAntesTamano { get; set; }
+    [MaxLength(500)]
+    public string? FotoDespues { get; set; }
+    [MaxLength(300)]
+    public string? FotoDespuesNombreOriginal { get; set; }
+    [MaxLength(80)]
+    public string? FotoDespuesMimeType { get; set; }
+    public long? FotoDespuesTamano { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public Paciente Paciente { get; set; } = null!;
     public Medico? Medico { get; set; }
@@ -153,6 +167,7 @@ public class EstudioClinico
 {
     public int Id { get; set; }
     public int PacienteId { get; set; }
+    public int? CitaId { get; set; }
     [Required, MaxLength(300)]
     public string Titulo { get; set; } = "";
     public string? Descripcion { get; set; }
@@ -165,6 +180,20 @@ public class EstudioClinico
     public long? Tamano { get; set; }
     [MaxLength(10)]
     public string? FechaEstudio { get; set; }
+    [MaxLength(500)]
+    public string? FotoAntes { get; set; }
+    [MaxLength(300)]
+    public string? FotoAntesNombreOriginal { get; set; }
+    [MaxLength(80)]
+    public string? FotoAntesMimeType { get; set; }
+    public long? FotoAntesTamano { get; set; }
+    [MaxLength(500)]
+    public string? FotoDespues { get; set; }
+    [MaxLength(300)]
+    public string? FotoDespuesNombreOriginal { get; set; }
+    [MaxLength(80)]
+    public string? FotoDespuesMimeType { get; set; }
+    public long? FotoDespuesTamano { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 

@@ -117,7 +117,8 @@ export default function PacientePerfilPage() {
                 paciente: { ...perfil, id: perfil.id } as unknown as Record<string, string | null | undefined> & {
                   id: number;
                 },
-                consultas: perfil.consultas
+                consultas: perfil.consultas,
+                estudios: perfil.estudios
               })
             }
           >
@@ -383,7 +384,10 @@ function HistoriaTab({
   onOpen: () => void;
   onEditConsulta: (c: Consulta) => void;
 }) {
-  const fotosSeguimiento = perfil.consultas.filter((c) => c.foto_seguimiento_url).slice().reverse();
+  const fotosSeguimiento = perfil.consultas
+    .filter((c) => c.foto_antes_url || c.foto_despues_url || c.foto_seguimiento_url)
+    .slice()
+    .reverse();
 
   return (
     <div className="space-y-6">
@@ -393,6 +397,23 @@ function HistoriaTab({
           <span>Ficha clínica formal del expediente</span>
         </div>
         <div className="flex flex-wrap gap-2">
+          {cfg ? (
+            <Button
+              variant="secondary"
+              onClick={() =>
+                descargarFichaClinicaPdf({
+                  cfg,
+                  paciente: { ...perfil, id: perfil.id } as unknown as Record<string, string | null | undefined> & {
+                    id: number;
+                  },
+                  consultas: perfil.consultas,
+                  estudios: perfil.estudios
+                })
+              }
+            >
+              <Download className="h-4 w-4" /> Descargar PDF
+            </Button>
+          ) : null}
           <Button variant="secondary" onClick={() => window.print()}>
             <Printer className="h-4 w-4" /> Imprimir ficha
           </Button>
@@ -402,7 +423,7 @@ function HistoriaTab({
         </div>
       </div>
 
-      <FichaClinica cfg={cfg} paciente={perfil} consultas={perfil.consultas} />
+      <FichaClinica cfg={cfg} paciente={perfil} consultas={perfil.consultas} estudios={perfil.estudios} />
 
       <Card className="print:hidden">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -410,7 +431,7 @@ function HistoriaTab({
             <h3 className="flex items-center gap-2 font-semibold">
               <ImageIcon className="h-4 w-4 text-primary-600" /> Evolución fotográfica
             </h3>
-            <p className="text-sm text-slate-500">Una foto por consulta para comparar el avance del paciente.</p>
+            <p className="text-sm text-slate-500">Fotos de antes y después por cada atención clínica.</p>
           </div>
         </div>
         {fotosSeguimiento.length === 0 ? (
@@ -418,35 +439,28 @@ function HistoriaTab({
             Aún no hay fotos de seguimiento. Puede agregarlas al crear o editar una atención clínica.
           </p>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 lg:grid-cols-2">
             {fotosSeguimiento.map((c, index) => {
-              const etiqueta =
-                fotosSeguimiento.length === 1
-                  ? "Registro inicial"
-                  : index === 0
-                    ? "Antes"
-                    : index === fotosSeguimiento.length - 1
-                      ? "Después"
-                      : "Seguimiento";
               return (
-                <a
+                <div
                   key={c.id}
-                  href={c.foto_seguimiento_url || "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group overflow-hidden rounded-xl border border-slate-200 bg-white"
+                  className="overflow-hidden rounded-xl border border-slate-200 bg-white"
                 >
-                  <img
-                    src={c.foto_seguimiento_url || ""}
-                    alt={`Foto de seguimiento ${formatFecha(c.fecha)}`}
-                    className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
-                  />
                   <div className="p-3">
-                    <p className="text-xs font-bold uppercase tracking-wide text-primary-700">{etiqueta}</p>
+                    <p className="text-xs font-bold uppercase tracking-wide text-primary-700">
+                      Atención clínica {fotosSeguimiento.length - index}
+                    </p>
                     <p className="text-sm font-medium text-slate-900">{formatFecha(c.fecha)}</p>
                     <p className="truncate text-xs text-slate-500">{c.motivo || "Atención clínica"}</p>
                   </div>
-                </a>
+                  <div className="grid gap-2 p-3 pt-0 sm:grid-cols-2">
+                    <FotoEvolucionLink label="Antes" url={c.foto_antes_url} fecha={c.fecha} />
+                    <FotoEvolucionLink label="Después" url={c.foto_despues_url} fecha={c.fecha} />
+                    {!c.foto_antes_url && !c.foto_despues_url ? (
+                      <FotoEvolucionLink label="Seguimiento" url={c.foto_seguimiento_url} fecha={c.fecha} />
+                    ) : null}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -467,7 +481,7 @@ function HistoriaTab({
                 <span>
                   {formatFecha(c.fecha)} — {c.motivo || "Atención general"}
                   {c.medico_nombre ? ` · ${c.medico_nombre}` : ""}
-                  {c.foto_seguimiento_url ? " · Con foto" : ""}
+                  {c.foto_antes_url || c.foto_despues_url || c.foto_seguimiento_url ? " · Con fotos" : ""}
                 </span>
                 <div className="flex gap-1">
                   <button
@@ -497,6 +511,72 @@ function HistoriaTab({
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+function FotoEvolucionLink({ label, url, fecha }: { label: string; url?: string | null; fecha: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-36 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+        Sin foto {label.toLowerCase()}
+      </div>
+    );
+  }
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="group block overflow-hidden rounded-lg border border-slate-200">
+      <img
+        src={url}
+        alt={`Foto ${label.toLowerCase()} ${formatFecha(fecha)}`}
+        className="h-36 w-full object-cover transition group-hover:scale-[1.02]"
+      />
+      <span className="block bg-white px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+        {label}
+      </span>
+    </a>
+  );
+}
+
+function FotoEvolucionInput({
+  label,
+  preview,
+  fileName,
+  onChange,
+  onRemove
+}: {
+  label: string;
+  preview: string | null;
+  fileName?: string | null;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-800">{label}</p>
+        <label className="cursor-pointer">
+          <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary-700 ring-1 ring-primary-200 hover:bg-primary-50">
+            <Camera className="h-3.5 w-3.5" /> Seleccionar
+          </span>
+          <input type="file" accept="image/*" className="hidden" onChange={onChange} />
+        </label>
+      </div>
+      {preview ? (
+        <div className="mt-3">
+          <img src={preview} alt={label} className="h-40 w-full rounded-lg object-cover ring-1 ring-slate-200" />
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="truncate">{fileName || "Foto registrada"}</span>
+            <button type="button" className="shrink-0 text-rose-600 hover:underline" onClick={onRemove}>
+              Quitar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+          Sin imagen
+        </div>
+      )}
     </div>
   );
 }
@@ -602,7 +682,16 @@ function TratamientosTab({
 }
 
 function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => void }) {
+  const nuevoParMultimedia = () => ({
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    fotoAntes: null as File | null,
+    fotoAntesPreview: null as string | null,
+    fotoDespues: null as File | null,
+    fotoDespuesPreview: null as string | null
+  });
   const [tituloEstudio, setTituloEstudio] = useState("");
+  const [citaEstudioId, setCitaEstudioId] = useState("");
+  const [paresMultimedia, setParesMultimedia] = useState(() => [nuevoParMultimedia()]);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -615,10 +704,91 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
         dataBase64,
         mimeType: file.type,
         nombreArchivo: file.name,
-        fechaEstudio: fechaHoyInput()
+        fechaEstudio: fechaHoyInput(),
+        citaId: citaEstudioId ? Number(citaEstudioId) : null
       });
       toast.success("Estudio cargado");
       setTituloEstudio("");
+      onRefresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  }
+
+  async function seleccionarFotoEvolucion(parId: string, tipo: "antes" | "despues", file?: File) {
+    if (!file) return;
+    if (file.type && !file.type.startsWith("image/")) {
+      toast.error("Seleccione una imagen para la evolución.");
+      return;
+    }
+    try {
+      const preview = await fileToBase64(file);
+      setParesMultimedia((actual) =>
+        actual.map((par) =>
+          par.id === parId
+            ? tipo === "antes"
+              ? { ...par, fotoAntes: file, fotoAntesPreview: preview }
+              : { ...par, fotoDespues: file, fotoDespuesPreview: preview }
+            : par
+        )
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo leer la imagen");
+    }
+  }
+
+  function quitarFotoEvolucion(parId: string, tipo: "antes" | "despues") {
+    setParesMultimedia((actual) =>
+      actual.map((par) =>
+        par.id === parId
+          ? tipo === "antes"
+            ? { ...par, fotoAntes: null, fotoAntesPreview: null }
+            : { ...par, fotoDespues: null, fotoDespuesPreview: null }
+          : par
+      )
+    );
+  }
+
+  function agregarParMultimedia() {
+    setParesMultimedia((actual) => [...actual, nuevoParMultimedia()]);
+  }
+
+  function eliminarParMultimedia(parId: string) {
+    setParesMultimedia((actual) => (actual.length === 1 ? actual : actual.filter((par) => par.id !== parId)));
+  }
+
+  async function guardarEvolucion() {
+    const paresConImagen = paresMultimedia.filter((par) => par.fotoAntes || par.fotoDespues);
+    if (!paresConImagen.length) {
+      toast.error("Seleccione al menos una fotografía.");
+      return;
+    }
+    try {
+      const tituloBase = tituloEstudio.trim() || "Evolución de recuperación";
+      await Promise.all(
+        paresConImagen.map(async (par, index) => {
+          const [fotoAntesDataBase64, fotoDespuesDataBase64] = await Promise.all([
+            par.fotoAntes ? fileToBase64(par.fotoAntes) : Promise.resolve(null),
+            par.fotoDespues ? fileToBase64(par.fotoDespues) : Promise.resolve(null)
+          ]);
+          return api.estudios.upload(perfil.id, {
+            titulo: paresConImagen.length > 1 ? `${tituloBase} ${index + 1}` : tituloBase,
+            descripcion: "Fotografías de antes y después de la recuperación.",
+            fechaEstudio: fechaHoyInput(),
+            citaId: citaEstudioId ? Number(citaEstudioId) : null,
+            fotoAntesDataBase64,
+            fotoAntesMimeType: par.fotoAntes?.type,
+            fotoAntesNombreArchivo: par.fotoAntes?.name,
+            fotoDespuesDataBase64,
+            fotoDespuesMimeType: par.fotoDespues?.type,
+            fotoDespuesNombreArchivo: par.fotoDespues?.name
+          });
+        })
+      );
+      toast.success("Evolución fotográfica cargada");
+      setTituloEstudio("");
+      setCitaEstudioId("");
+      setParesMultimedia([nuevoParMultimedia()]);
       onRefresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
@@ -639,6 +809,21 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
               onChange={(e) => setTituloEstudio(e.target.value)}
             />
           </div>
+          <div>
+            <Label>Cita relacionada</Label>
+            <Select
+              value={citaEstudioId}
+              onChange={(e) => setCitaEstudioId(e.target.value)}
+              className="min-w-[14rem]"
+            >
+              <option value="">Sin cita específica</option>
+              {perfil.citas.map((cita) => (
+                <option key={cita.id} value={cita.id}>
+                  {formatFechaHora(cita.fecha_hora)} · {cita.motivo || "Consulta"}
+                </option>
+              ))}
+            </Select>
+          </div>
         <label className="cursor-pointer">
           <span className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white">
             <FileUp className="h-4 w-4" /> Subir archivo
@@ -647,14 +832,71 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
         </label>
         </div>
       </div>
+      <div className="mb-4 rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+        <div className="mb-3">
+          <h4 className="font-semibold text-slate-900">Evolución de recuperación</h4>
+          <p className="text-sm text-slate-500">
+            Suba fotografías de antes y después para documentar la recuperación del paciente.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {paresMultimedia.map((par, index) => (
+            <div key={par.id} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-slate-800">Multimedia {index + 1}</p>
+                {paresMultimedia.length > 1 ? (
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-rose-600 hover:underline"
+                    onClick={() => eliminarParMultimedia(par.id)}
+                  >
+                    Quitar bloque
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <EstudioFotoInput
+                  label="Foto antes"
+                  preview={par.fotoAntesPreview}
+                  fileName={par.fotoAntes?.name}
+                  onSelect={(file) => seleccionarFotoEvolucion(par.id, "antes", file)}
+                  onRemove={() => quitarFotoEvolucion(par.id, "antes")}
+                />
+                <EstudioFotoInput
+                  label="Foto después"
+                  preview={par.fotoDespuesPreview}
+                  fileName={par.fotoDespues?.name}
+                  onSelect={(file) => seleccionarFotoEvolucion(par.id, "despues", file)}
+                  onRemove={() => quitarFotoEvolucion(par.id, "despues")}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={agregarParMultimedia}>
+            <Plus className="h-4 w-4" /> Agregar más multimedia
+          </Button>
+          <Button type="button" onClick={guardarEvolucion}>
+            <FileUp className="h-4 w-4" /> Guardar evolución
+          </Button>
+        </div>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {perfil.estudios.map((e) => {
           const esImagen =
             e.mime_type?.startsWith("image/") ||
             /\.(png|jpe?g|webp|gif)$/i.test(e.nombre_original || e.archivo || "");
+          const tieneEvolucion = !!(e.foto_antes_url || e.foto_despues_url);
+          const citaRelacionada = e.cita_id ? perfil.citas.find((cita) => cita.id === e.cita_id) : null;
           return (
             <div key={e.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {esImagen && e.url ? (
+              {tieneEvolucion ? (
+                <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-2">
+                  <EstudioFotoLink label="Antes" url={e.foto_antes_url} titulo={e.titulo} />
+                  <EstudioFotoLink label="Después" url={e.foto_despues_url} titulo={e.titulo} />
+                </div>
+              ) : esImagen && e.url ? (
                 <a href={e.url} target="_blank" rel="noreferrer" className="block bg-slate-100">
                   <img
                     src={e.url}
@@ -672,8 +914,13 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
                 <p className="font-medium">{e.titulo}</p>
                 <p className="text-xs text-slate-500">
                   {formatFecha(e.fecha_estudio || "")}
-                  {e.mime_type ? ` · ${esImagen ? "Imagen" : "Archivo"}` : ""}
+                  {tieneEvolucion ? " · Antes / después" : e.mime_type ? ` · ${esImagen ? "Imagen" : "Archivo"}` : ""}
                 </p>
+                {citaRelacionada ? (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Cita: {formatFechaHora(citaRelacionada.fecha_hora)} · {citaRelacionada.motivo || "Consulta"}
+                  </p>
+                ) : null}
                 <div className="mt-2 flex gap-2">
                   <a href={e.url} target="_blank" rel="noreferrer" className="text-sm text-primary-600 hover:underline">
                     {esImagen ? "Ver imagen" : "Ver archivo"}
@@ -696,6 +943,71 @@ function EstudiosTab({ perfil, onRefresh }: { perfil: Perfil; onRefresh: () => v
         })}
       </div>
     </Card>
+  );
+}
+
+function EstudioFotoInput({
+  label,
+  preview,
+  fileName,
+  onSelect,
+  onRemove
+}: {
+  label: string;
+  preview: string | null;
+  fileName?: string;
+  onSelect: (file?: File) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-800">{label}</p>
+        <label className="cursor-pointer">
+          <span className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-primary-700 ring-1 ring-primary-200 hover:bg-primary-50">
+            <Camera className="h-3.5 w-3.5" /> Seleccionar
+          </span>
+          <input type="file" accept="image/*" className="hidden" onChange={(e) => onSelect(e.target.files?.[0])} />
+        </label>
+      </div>
+      {preview ? (
+        <div className="mt-3">
+          <img src={preview} alt={label} className="h-40 w-full rounded-lg object-cover ring-1 ring-slate-200" />
+          <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+            <span className="truncate">{fileName || "Imagen seleccionada"}</span>
+            <button type="button" className="shrink-0 text-rose-600 hover:underline" onClick={onRemove}>
+              Quitar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-400">
+          Sin imagen
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EstudioFotoLink({ label, url, titulo }: { label: string; url?: string | null; titulo: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-slate-200 bg-white text-xs text-slate-400">
+        Sin foto {label.toLowerCase()}
+      </div>
+    );
+  }
+
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="group overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <img
+        src={url}
+        alt={`${label} - ${titulo}`}
+        className="h-40 w-full object-cover transition group-hover:scale-[1.02]"
+        loading="lazy"
+      />
+      <span className="block px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-600">{label}</span>
+    </a>
   );
 }
 
@@ -929,6 +1241,53 @@ function ConsultaModal({
   const [fotoDataBase64, setFotoDataBase64] = useState<string | null>(null);
   const [fotoPreview, setFotoPreview] = useState<string | null>(consulta?.foto_seguimiento_url || null);
   const [eliminarFoto, setEliminarFoto] = useState(false);
+  const [fotoAntesFile, setFotoAntesFile] = useState<File | null>(null);
+  const [fotoAntesDataBase64, setFotoAntesDataBase64] = useState<string | null>(null);
+  const [fotoAntesPreview, setFotoAntesPreview] = useState<string | null>(consulta?.foto_antes_url || null);
+  const [eliminarFotoAntes, setEliminarFotoAntes] = useState(false);
+  const [fotoDespuesFile, setFotoDespuesFile] = useState<File | null>(null);
+  const [fotoDespuesDataBase64, setFotoDespuesDataBase64] = useState<string | null>(null);
+  const [fotoDespuesPreview, setFotoDespuesPreview] = useState<string | null>(consulta?.foto_despues_url || null);
+  const [eliminarFotoDespues, setEliminarFotoDespues] = useState(false);
+
+  async function onFotoEvolucion(tipo: "antes" | "despues", e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type && !file.type.startsWith("image/")) {
+      toast.error("Seleccione una imagen para la evolución clínica.");
+      return;
+    }
+    try {
+      const dataBase64 = await fileToBase64(file);
+      if (tipo === "antes") {
+        setFotoAntesFile(file);
+        setFotoAntesDataBase64(dataBase64);
+        setFotoAntesPreview(dataBase64);
+        setEliminarFotoAntes(false);
+      } else {
+        setFotoDespuesFile(file);
+        setFotoDespuesDataBase64(dataBase64);
+        setFotoDespuesPreview(dataBase64);
+        setEliminarFotoDespues(false);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "No se pudo leer la imagen");
+    }
+  }
+
+  function quitarFotoEvolucion(tipo: "antes" | "despues") {
+    if (tipo === "antes") {
+      setFotoAntesFile(null);
+      setFotoAntesDataBase64(null);
+      setFotoAntesPreview(null);
+      setEliminarFotoAntes(!!consulta?.foto_antes_url);
+      return;
+    }
+    setFotoDespuesFile(null);
+    setFotoDespuesDataBase64(null);
+    setFotoDespuesPreview(null);
+    setEliminarFotoDespues(!!consulta?.foto_despues_url);
+  }
 
   async function onFotoSeguimiento(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -972,6 +1331,18 @@ function ConsultaModal({
         body.fotoNombreArchivo = fotoFile.name;
       }
       if (eliminarFoto) body.eliminarFotoSeguimiento = true;
+      if (fotoAntesFile && fotoAntesDataBase64) {
+        body.fotoAntesDataBase64 = fotoAntesDataBase64;
+        body.fotoAntesMimeType = fotoAntesFile.type;
+        body.fotoAntesNombreArchivo = fotoAntesFile.name;
+      }
+      if (eliminarFotoAntes) body.eliminarFotoAntes = true;
+      if (fotoDespuesFile && fotoDespuesDataBase64) {
+        body.fotoDespuesDataBase64 = fotoDespuesDataBase64;
+        body.fotoDespuesMimeType = fotoDespuesFile.type;
+        body.fotoDespuesNombreArchivo = fotoDespuesFile.name;
+      }
+      if (eliminarFotoDespues) body.eliminarFotoDespues = true;
       if (esEdicion && consulta) {
         await api.consultas.update(consulta.id, body);
         toast.success("Atención clínica actualizada");
@@ -1052,12 +1423,36 @@ function ConsultaModal({
             placeholder="Medicación, estudios solicitados, recomendaciones…"
           />
         </div>
+        <div className="rounded-xl border border-primary-100 bg-primary-50/40 p-3">
+          <div>
+            <Label>Evolución fotográfica antes / después</Label>
+            <p className="mt-1 text-xs text-slate-500">
+              Opcional. Agregue imágenes de la condición antes y después de la atención o tratamiento de esta cita.
+            </p>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <FotoEvolucionInput
+              label="Foto antes"
+              preview={fotoAntesPreview}
+              fileName={fotoAntesFile?.name || consulta?.foto_antes_nombre_original}
+              onChange={(e) => onFotoEvolucion("antes", e)}
+              onRemove={() => quitarFotoEvolucion("antes")}
+            />
+            <FotoEvolucionInput
+              label="Foto después"
+              preview={fotoDespuesPreview}
+              fileName={fotoDespuesFile?.name || consulta?.foto_despues_nombre_original}
+              onChange={(e) => onFotoEvolucion("despues", e)}
+              onRemove={() => quitarFotoEvolucion("despues")}
+            />
+          </div>
+        </div>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <Label>Foto de seguimiento</Label>
+              <Label>Foto adicional de seguimiento</Label>
               <p className="mt-1 text-xs text-slate-500">
-                Opcional. Guarde una imagen por consulta para comparar antes y después.
+                Opcional. Mantiene compatibilidad con registros anteriores que tenían una sola foto.
               </p>
             </div>
             <label className="cursor-pointer">
